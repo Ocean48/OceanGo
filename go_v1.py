@@ -23,19 +23,30 @@ class GoGame:
     def is_valid_move(self, x, y): 
         # Check if a move is valid by verifying it's within the board and on an empty intersection
         if 0 <= x < self.board_size and 0 <= y < self.board_size and self.board[x][y] == 0:
+            
             # Ko rule: Check if the move is not at the same position as the previous move
             if (x, y) != self.ko:
-                # Create a copy of the board and simulate the move to check for suicide
-                temp_board = self.get_state()
-                temp_board[x][y] = self.current_player
-                for i, j in [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]:
-                    if 0 <= i < self.board_size and 0 <= j < self.board_size:
-                        if temp_board[i][j] == 3 - self.current_player:
-                            group = self.find_group(i, j)
-                            if not self.has_liberties(group):
-                                return False  # Move is a suicide move
-            return True
+                if self.is_suicide_move(x, y):
+                    print("Suicide move. Try again.")
+                    return False
+                else:    
+                    return True
+            
         return False
+    
+    def is_suicide_move(self, x, y):
+        # Check if a move is a suicide move (capturing own stones without capturing opponent stones)
+        player = self.board[x][y]
+        self.board[x][y] = player  # Temporarily place the stone on the board
+
+        # Check if the group containing the stone has no liberties
+        group = self.find_group(x, y)
+        has_liberties = self.has_liberties(group)
+
+        # Restore the original state of the board
+        self.board[x][y] = 0
+
+        return not has_liberties
 
     def make_move(self, x, y):
         # Check if the move is valid
