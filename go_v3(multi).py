@@ -8,7 +8,7 @@ import time
 # from gym import spaces
 
 
-BOARD_SIZE = 5
+BOARD_SIZE = 9
 ITERATIONS = 1000
 PROCESSES_NUM = 7
 
@@ -29,16 +29,14 @@ class GoGame:
         x, y = move
         if not self.is_valid_move(move):
             return False
-        # test_board = [row[:] for row in self.board]
+        # Create a copy of the board and place the stone at the specified location
+        # test_board = [row[:] for row in self.board] # old version
         test_board = copy.deepcopy(self.board)
         test_board[x][y] = self.current_player
-        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < self.board_size and 0 <= ny < self.board_size and test_board[nx][ny] == ' ':
-                return False
-        return not self._has_liberties((x, y), test_board)
+        # Check if the stone has any liberties (excluding self-liberties)
+        return not self._has_liberties((x, y), test_board, exclude_self=True)
 
-    def _has_liberties(self, point, board):
+    def _has_liberties(self, point, board, exclude_self=False):
         x, y = point
         color = board[x][y]
         visited = [[False for _ in range(self.board_size)] for _ in range(self.board_size)]
@@ -56,7 +54,15 @@ class GoGame:
                             return True
             return False
 
-        return dfs(point)
+        if exclude_self:
+            # Exclude self-liberties by temporarily removing the stone
+            board[x][y] = ' '
+            has_liberties = dfs(point)
+            board[x][y] = color  # Restore the stone
+        else:
+            has_liberties = dfs(point)
+
+        return has_liberties
 
     def remove_captured_stones(self):
         for x in range(self.board_size):
