@@ -2,136 +2,142 @@ import random
 import numpy as np
 import math
 import copy
+import time
 # import gym
 # from gym import spaces
 
 
-# Define the board size as a constant
-BOARD_SIZE = 5
+BOARD_SIZE = 9
+ITERATIONS = 1000
 
 # Define the GoGame class to represent the game board and rules
 class GoGame:
     def __init__(self, board_size=BOARD_SIZE):
         # Initialize the game board and set the current player
         self.board_size = board_size
-        self.board = np.zeros((board_size, board_size), dtype=int) # create board using np.zeros
-        self.current_player = 1
-        self.ko = None  # Ko rule: Store the previous move's position
+        self.board = [[' ' for _ in range(board_size)] for _ in range(board_size)]
+        self.current_player = 1  # Player 1
+        self.ko_point = None
 
-    # x -> x pos
-    # y -> y pos
-    def is_valid_move(self, x, y): 
-        # Check if a move is valid by verifying it's within the board and on an empty intersection
-        if 0 <= x < self.board_size and 0 <= y < self.board_size and self.board[x][y] == 0:
-            
-            # Ko rule: Check if the move is not at the same position as the previous move
-            if (x, y) != self.ko:
-                if self.is_suicide_move(x, y):
-                    print("Suicide move. Try again.")
-                    return False
-                else:    
-                    return True
-            
-        return False
-    
-    def is_suicide_move(self, x, y):
-        # Check if a move is a suicide move (capturing own stones without capturing opponent stones)
-        player = self.board[x][y]
-        self.board[x][y] = player  # Temporarily place the stone on the board
+    def is_valid_move(self, move):
+        x, y = move
+        return 0 <= x < self.board_size and 0 <= y < self.board_size and self.board[x][y] == ' '
 
-        # Check if the group containing the stone has no liberties
-        group = self.find_group(x, y)
-        has_liberties = self.has_liberties(group)
+    def is_suicide_move(self, move):
+        x, y = move
+        if not self.is_valid_move(move):
+            return False
+        test_board = [row[:] for row in self.board]
+        test_board[x][y] = self.current_player
+        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.board_size and 0 <= ny < self.board_size and test_board[nx][ny] == ' ':
+                return False
+        return not self._has_liberties((x, y), test_board)
 
-        # Restore the original state of the board
-        self.board[x][y] = 0
+    def _has_liberties(self, point, board):
+        x, y = point
+        color = board[x][y]
+        visited = [[False for _ in range(self.board_size)] for _ in range(self.board_size)]
 
-        return not has_liberties
+        def dfs(point):
+            x, y = point
+            visited[x][y] = True
+            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
+                    if board[nx][ny] == ' ':
+                        return True
+                    elif not visited[nx][ny] and board[nx][ny] == color:
+                        if dfs((nx, ny)):
+                            return True
+            return False
 
-    def make_move(self, x, y):
-        # Check if the move is valid
-        if not self.is_valid_move(x, y):
-            print("Invalid move. Try again.")
-            return
+        return dfs(point)
 
-        # Make the move by updating the board with the current player's stone
-        self.board[x][y] = self.current_player
+    def remove_captured_stones(self):
+        for x in range(self.board_size):
+            for y in range(self.board_size):
+                if self.board[x][y] != ' ':
+                    color = self.board[x][y]
+                    group = self._find_group((x, y))
+                    if not self._has_liberties_in_group(group):
+                        # Remove the captured stones
+                        for stone in group:
+                            self.board[stone[0]][stone[1]] = ' '
 
-        # Check for captured stones 
-        for i, j in [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]:
-            if 0 <= i < self.board_size and 0 <= j < self.board_size:
-                if self.board[i][j] == 3 - self.current_player:
-                    group = self.find_group(i, j)
-                    if not self.has_liberties(group):
-                        self.remove_stones(group)
-
-        # Switch players
-        self.current_player = 3 - self.current_player
-
-    # To find a group of stones
-    def find_group(self, x, y):
+    def _find_group(self, start):
+        color = self.board[start[0]][start[1]]
         group = set()
-        visited = set()
-        player = self.board[x][y]
+        stack = [start]
 
-        def dfs(i, j):
-            if (i, j) in visited:
-                return
-            visited.add((i, j))
-            if self.board[i][j] == player:
-                group.add((i, j))
-                for a, b in [(i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1)]:
-                    if 0 <= a < self.board_size and 0 <= b < self.board_size:
-                        dfs(a, b)
+        while stack:
+            x, y = stack.pop()
+            group.add((x, y))
+            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < self.board_size and 0 <= ny < self.board_size and (nx, ny) not in group:
+                    if self.board[nx][ny] == color:
+                        stack.append((nx, ny))
 
-        dfs(x, y)
         return group
 
-    # Check is a given group has liberties
-    def has_liberties(self, group):
-        for x, y in group:
-            for i, j in [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]:
-                if 0 <= i < self.board_size and 0 <= j < self.board_size and self.board[i][j] == 0:
+    def _has_liberties_in_group(self, group):
+        for stone in group:
+            x, y = stone
+            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < self.board_size and 0 <= ny < self.board_size and self.board[nx][ny] == ' ':
                     return True
         return False
 
-    # Remove captured stone/group
-    def remove_stones(self, group):
-        for x, y in group:
-            self.board[x][y] = 0
-    
-    # Get a list of legal moves (empty intersections) on the current board    
+    def make_move(self, x, y):
+        move = x, y
+        if self.is_valid_move(move) and not self.is_suicide_move(move):
+            self.board[x][y] = self.current_player
+            if self.ko_point == move:
+                self.ko_point = None
+            else:
+                self.ko_point = None
+            self.remove_captured_stones()  # Remove captured stones after each move
+            self._switch_player()
+            return True
+        return False
+
+
+    def _switch_player(self):
+        self.current_player = 3 - self.current_player  # Toggle between player 1 and player 2
+
     def get_legal_moves(self):
         legal_moves = []
-        for i in range(self.board_size):
-            for j in range(self.board_size):
-                if self.is_valid_move(i, j):
-                    legal_moves.append((i, j))
+        for x in range(self.board_size):
+            for y in range(self.board_size):
+                if self.is_valid_move((x, y)) and not self.is_suicide_move((x, y)):
+                    legal_moves.append((x, y))
         return legal_moves
 
-    # Check if the game is over by examining the entire board
-    # Only end if board is full        
     def is_game_over(self):
-        for i in range(self.board_size):
-            for j in range(self.board_size):
-                if self.board[i][j] == 0:
-                    return False
-        return True
-    
-    # Determine the winner based on the sum of stones on the board
+        return len(self.get_legal_moves()) == 0
+
     def get_winner(self):
-        # Very bad design
-        return np.sign(np.sum(self.board))
+        if not self.is_game_over():
+            return None
+        player1_stones = sum(row.count(1) for row in self.board)
+        player2_stones = sum(row.count(2) for row in self.board)
+        if player1_stones > player2_stones:
+            return 1  # Player 1 wins
+        elif player2_stones > player1_stones:
+            return 2  # Player 2 wins
+        else:
+            return 0  # Draw
 
     # Create a deep copy of the current board state
     def get_state(self):
         return copy.deepcopy(self.board)
-
-    # Render the current board state
+    
     def render(self):
-        for i in range(self.board_size):
-            print(" ".join([str(self.board[i][j]) for j in range(self.board_size)]))
-        print()
+        for row in self.board:
+            print(' '.join(map(str, row)))
 
 # Define the MCTSTreeNode class to represent nodes in the Monte Carlo Tree Search
 class MCTSTreeNode:
@@ -209,7 +215,7 @@ def mcts(root, iterations):
         backpropagate(node, result)
 
 # Define the AI's move selection using MCTS
-def ai_play(board, iterations=1000):
+def ai_play(board, iterations=ITERATIONS):
     root = MCTSTreeNode()
     root.state = board
     root.unvisited_moves = board.get_legal_moves()
@@ -221,7 +227,7 @@ def ai_play(board, iterations=1000):
 def render_game(board):
     for i in range(len(board)):
         for j in range(len(board[i])):
-            if board[i][j] == 0:
+            if board[i][j] == " ":
                 print(".", end=" ")  # An empty intersection
             elif board[i][j] == 1:
                 print("O", end=" ")  # Player 1's stone
@@ -234,6 +240,7 @@ def render_game(board):
 def main():
     board_size = BOARD_SIZE
     game = GoGame(board_size)
+    start = 0
 
     while not game.is_game_over():
         render_game(game.get_state())
@@ -241,10 +248,14 @@ def main():
             x, y = map(int, input("Enter your move (x y): ").split())
             x -= 1  # Adjust the input by subtracting 1 from the row coordinate
             y -= 1  # Adjust the input by subtracting 1 from the column coordinate
+            start = time.time()
             game.make_move(x, y)
         else:
+            start = time.time()
             ai_move = ai_play(game)
             game.make_move(*ai_move)
+        end = time.time()
+        print(3-game.current_player, " Time=", end - start)
 
     render_game(game.get_state())
     winner = game.get_winner()
