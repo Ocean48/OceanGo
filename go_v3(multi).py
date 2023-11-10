@@ -304,11 +304,11 @@ def render_game(board):
     for i in range(len(board)):
         for j in range(len(board[i])):
             if board[i][j] == " ":
-                print("➕", end=" ")  # An empty intersection
+                print(".", end=" ")  # An empty intersection
             elif board[i][j] == 1:
-                print("⚪", end=" ")  # Player 1's stone  ○⚪◯
+                print("●", end=" ")  # Player 1's stone  ○⚪◯
             elif board[i][j] == 2:
-                print("⚫", end=" ")  # Player 2's stone   ●⚫⬤
+                print("○", end=" ")  # Player 2's stone   ●⚫⬤
             # ⬜⬛➕
         print()
     print("------------------------------------")
@@ -324,13 +324,13 @@ def main():
     while not game.is_game_over():
         render_game(game.get_state())
         if game.current_player == 1:
-            # x, y = map(int, input("Enter your move (x y): ").split())
-            # x -= 1  # Adjust the input by subtracting 1 from the row coordinate
-            # y -= 1  # Adjust the input by subtracting 1 from the column coordinate
+            x, y = map(int, input("Enter your move (x y): ").split())
+            x -= 1  # Adjust the input by subtracting 1 from the row coordinate
+            y -= 1  # Adjust the input by subtracting 1 from the column coordinate
             start = time.time()
-            ai_move = ai_play_parallel(game)  # Use the parallel AI function
-            game.make_move(*ai_move)
-            # game.make_move(x, y)
+            # ai_move = ai_play_parallel(game)  # Use the parallel AI function
+            # game.make_move(*ai_move)
+            game.make_move(x, y)
         else:
             start = time.time()
             ai_move = ai_play_parallel(game)  # Use the parallel AI function
