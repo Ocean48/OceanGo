@@ -29,7 +29,8 @@ class GoGame:
         x, y = move
         if not self.is_valid_move(move):
             return False
-        test_board = [row[:] for row in self.board]
+        # test_board = [row[:] for row in self.board]   # old version
+        test_board = copy.deepcopy(self.board)
         test_board[x][y] = self.current_player
         for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
             nx, ny = x + dx, y + dy

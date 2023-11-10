@@ -8,7 +8,7 @@ import time
 # from gym import spaces
 
 
-BOARD_SIZE = 9
+BOARD_SIZE = 5
 ITERATIONS = 1000
 PROCESSES_NUM = 7
 
@@ -23,20 +23,34 @@ class GoGame:
 
     def is_valid_move(self, move):
         x, y = move
-        return 0 <= x < self.board_size and 0 <= y < self.board_size and self.board[x][y] == ' '
+        if not (0 <= x < self.board_size and 0 <= y < self.board_size) or self.board[x][y] != ' ':
+            return False
 
+        # Create a copy of the board for testing the move
+        test_board = copy.deepcopy(self.board)
+        test_board[x][y] = self.current_player
+        captured_stones = self._get_captured_stones((x, y), test_board)
+
+        if self.current_player == 1:
+            return not captured_stones
+        else:
+            return True
+        
+        
     def is_suicide_move(self, move):
         x, y = move
         if not self.is_valid_move(move):
             return False
-        # Create a copy of the board and place the stone at the specified location
-        # test_board = [row[:] for row in self.board] # old version
+        # test_board = [row[:] for row in self.board]   # old version
         test_board = copy.deepcopy(self.board)
         test_board[x][y] = self.current_player
-        # Check if the stone has any liberties (excluding self-liberties)
-        return not self._has_liberties((x, y), test_board, exclude_self=True)
+        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.board_size and 0 <= ny < self.board_size and test_board[nx][ny] == ' ':
+                return False
+        return not self._has_liberties((x, y), test_board)
 
-    def _has_liberties(self, point, board, exclude_self=False):
+    def _has_liberties(self, point, board):
         x, y = point
         color = board[x][y]
         visited = [[False for _ in range(self.board_size)] for _ in range(self.board_size)]
@@ -54,15 +68,7 @@ class GoGame:
                             return True
             return False
 
-        if exclude_self:
-            # Exclude self-liberties by temporarily removing the stone
-            board[x][y] = ' '
-            has_liberties = dfs(point)
-            board[x][y] = color  # Restore the stone
-        else:
-            has_liberties = dfs(point)
-
-        return has_liberties
+        return dfs(point)
 
     def remove_captured_stones(self):
         for x in range(self.board_size):
@@ -102,16 +108,40 @@ class GoGame:
 
     def make_move(self, x, y):
         move = x, y
-        if self.is_valid_move(move) and not self.is_suicide_move(move):
-            self.board[x][y] = self.current_player
-            if self.ko_point == move:
-                self.ko_point = None
-            else:
-                self.ko_point = None
-            self.remove_captured_stones()  # Remove captured stones after each move
-            self._switch_player()
-            return True
+        if self.is_valid_move(move):
+            # Create a copy of the board for testing the move
+            test_board = copy.deepcopy(self.board)
+            test_board[x][y] = self.current_player
+            captured_stones = self._get_captured_stones((x, y), test_board)
+
+            if not captured_stones:
+                self.board[x][y] = self.current_player
+
+                if self.ko_point == move:
+                    self.ko_point = None
+                else:
+                    self.ko_point = None
+                self.remove_captured_stones()  # Remove captured stones after each move
+                self._switch_player()
+                return True
         return False
+    
+    def _get_captured_stones(self, move, board):
+        x, y = move
+        color = board[x][y]
+        captured_stones = set()
+
+        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.board_size and 0 <= ny < self.board_size and board[nx][ny] != ' ':
+                group = self._find_group((nx, ny))
+                if not self._has_liberties_in_group(group):
+                    if color == self.current_player:  # Check if it's self-capture
+                        captured_stones.update(group)
+                    elif color != self.current_player:  # Check if it's an opponent's group
+                        captured_stones.discard((x, y))
+
+        return captured_stones
 
 
     def _switch_player(self):
@@ -274,11 +304,12 @@ def render_game(board):
     for i in range(len(board)):
         for j in range(len(board[i])):
             if board[i][j] == " ":
-                print(".", end=" ")  # An empty intersection
+                print("➕", end=" ")  # An empty intersection
             elif board[i][j] == 1:
-                print("O", end=" ")  # Player 1's stone
+                print("⚪", end=" ")  # Player 1's stone  ○⚪◯
             elif board[i][j] == 2:
-                print("X", end=" ")  # Player 2's stone
+                print("⚫", end=" ")  # Player 2's stone   ●⚫⬤
+            # ⬜⬛➕
         print()
     print("------------------------------------")
 
@@ -293,13 +324,13 @@ def main():
     while not game.is_game_over():
         render_game(game.get_state())
         if game.current_player == 1:
-            x, y = map(int, input("Enter your move (x y): ").split())
-            x -= 1  # Adjust the input by subtracting 1 from the row coordinate
-            y -= 1  # Adjust the input by subtracting 1 from the column coordinate
+            # x, y = map(int, input("Enter your move (x y): ").split())
+            # x -= 1  # Adjust the input by subtracting 1 from the row coordinate
+            # y -= 1  # Adjust the input by subtracting 1 from the column coordinate
             start = time.time()
-            # ai_move = ai_play_parallel(game)  # Use the parallel AI function
-            # game.make_move(*ai_move)
-            game.make_move(x, y)
+            ai_move = ai_play_parallel(game)  # Use the parallel AI function
+            game.make_move(*ai_move)
+            # game.make_move(x, y)
         else:
             start = time.time()
             ai_move = ai_play_parallel(game)  # Use the parallel AI function
