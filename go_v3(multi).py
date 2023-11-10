@@ -8,7 +8,7 @@ import time
 # from gym import spaces
 
 
-BOARD_SIZE = 5
+BOARD_SIZE = 2
 ITERATIONS = 1000
 PROCESSES_NUM = 7
 
@@ -301,20 +301,30 @@ def ai_play_parallel(board, iterations=ITERATIONS, num_processes=PROCESSES_NUM):
 
 # Define the rendering function for the game board
 def render_game(board):
+    out = ""
     for i in range(len(board)):
         for j in range(len(board[i])):
             if board[i][j] == " ":
+                out += ". "
                 print(".", end=" ")  # An empty intersection
             elif board[i][j] == 1:
+                out += "● "
                 print("●", end=" ")  # Player 1's stone  ○⚪◯
             elif board[i][j] == 2:
+                out += "○ "
                 print("○", end=" ")  # Player 2's stone   ●⚫⬤
             # ⬜⬛➕
         print()
+        out += "\n"
     print("------------------------------------")
+    out += "------------------------------------------------------------------------"
+    return out
 
 # Define the main game loop
 def main():
+    
+    file = open("data.txt", "a")
+    file.write("Multi - new rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
     
     start = 0
     
@@ -337,9 +347,10 @@ def main():
             game.make_move(*ai_move)
         end = time.time()
         print(3-game.current_player, " Time=", end - start)
+        file.write(str(3-game.current_player)+ "   Time=" + str(end - start)+"\n")
             
 
-    render_game(game.get_state())
+    final_game = render_game(game.get_state())
     winner = game.get_winner()
     if winner == 0:
         print("It's a tie!")
@@ -347,6 +358,8 @@ def main():
         print("You win!")
     else:
         print("AI wins!")
+        
+    file.write(final_game+"\n\n\n\n\n")
 
 if __name__ == "__main__":
     main()
