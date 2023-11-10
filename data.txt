@@ -1,0 +1,21 @@
+Multi - new rules:
+Board size: 5
+Iterations:1000
+Processes number:7
+1   Time=0.0001800060272216797
+2   Time=8.388500928878784
+2   Time=1.7881393432617188e-05
+Multi - new rules:
+Board size: 2
+Iterations:1000
+Processes number:7
+1   Time=0.0001442432403564453
+2   Time=0.9518342018127441
+1   Time=0.00013780593872070312
+. ● 
+● . 
+------------------------------------------------------------------------
+
+
+
+
