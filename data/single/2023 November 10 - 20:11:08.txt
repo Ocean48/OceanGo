@@ -1,5 +1,0 @@
-Single:
-Board size: 5
-Iterations:1000
-1 Time=5.888938903808594e-05
-2 Time=3.816416025161743
