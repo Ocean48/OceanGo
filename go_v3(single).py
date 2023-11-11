@@ -249,7 +249,7 @@ def render_game(board):
 def main():
     
     date = datetime.datetime.now()
-    current_time = date.strftime("%d")
+    current_time = date.strftime("%b%d_%H%M")
     file = open("data/single/"+current_time+".txt", "a")
     file.write("Single:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS)+"\n")
     
