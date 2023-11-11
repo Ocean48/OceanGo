@@ -335,7 +335,8 @@ def main():
     game = GoGame(board_size)
 
     while not game.is_game_over():
-        render_game(game.get_state())
+        game_board_out = render_game(game.get_state())
+        file.write(game_board_out+"\n")
         if game.current_player == 1:
             # x, y = map(int, input("Enter your move (x y): ").split())
             # x -= 1  # Adjust the input by subtracting 1 from the row coordinate
@@ -353,16 +354,19 @@ def main():
         file.write(str(3-game.current_player)+ "   Time=" + str(end - start)+"\n")
             
 
-    final_game = render_game(game.get_state())
+    game_board_out = render_game(game.get_state())
+    file.write(game_board_out+"\n")
     winner = game.get_winner()
     if winner == 0:
         print("It's a tie!")
+        file.write("Tie")
     elif winner == 1:
         print("You win!")
+        file.write("You win")
     else:
         print("AI wins!")
+        file.write("AI win")
         
-    file.write(final_game+"\n\n\n\n\n")
 
 if __name__ == "__main__":
     main()
