@@ -250,7 +250,7 @@ def main():
     
     date = datetime.datetime.now()
     current_time = date.strftime("%Y.%b.%d_%Hh%Mm")
-    file = open("data/single/"+current_time+".txt", "a")
+    file = open("data/single/"+current_time+".txt", "a", encoding='utf-8')
     file.write("Single:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS)+"\n")
     
     
@@ -259,7 +259,8 @@ def main():
     start = 0
 
     while not game.is_game_over():
-        render_game(game.get_state())
+        game_board_out = render_game(game.get_state())
+        file.write(game_board_out+"\n")
         if game.current_player == 1:
             x, y = map(int, input("Enter your move (x y): ").split())
             x -= 1  # Adjust the input by subtracting 1 from the row coordinate
@@ -274,16 +275,20 @@ def main():
         print(3-game.current_player, " Time=", end - start)
         file.write(str(3-game.current_player)+ " Time="+ str(end - start)+"\n")
 
-    final_game = render_game(game.get_state())
+    game_board_out = render_game(game.get_state())
+    file.write(game_board_out+"\n")
     winner = game.get_winner()
     if winner == 0:
         print("It's a tie!")
+        file.write("Tie")
     elif winner == 1:
         print("You win!")
+        file.write("You win")
     else:
         print("AI wins!")
+        file.write("AI win")
         
-    file.write(final_game+"\n")
+    
 
 if __name__ == "__main__":
     main()
