@@ -1,4 +1,0 @@
-Multi - new rules:
-Board size: 9
-Iterations:1000
-Processes number:7
