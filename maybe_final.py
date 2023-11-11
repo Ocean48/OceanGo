@@ -4,6 +4,7 @@ import math
 import copy
 import multiprocessing
 import time
+import datetime
 # import gym
 # from gym import spaces
 
@@ -287,7 +288,9 @@ def render_game(board):
 # Define the main game loop
 def main():
     
-    file = open("data.txt", "a")
+    date = datetime.datetime.now()
+    current_time = date.strftime("%Y %B %d - %H:%M:%S")
+    file = open("data/multi/old/"+current_time+".txt", "a")
     file.write("Multi - old rules:\n"+"Board size:",BOARD_SIZE, "\nIterations:",ITERATIONS, "Processes number:",PROCESSES_NUM)
     
     start = 0
