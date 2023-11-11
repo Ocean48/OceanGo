@@ -325,7 +325,7 @@ def render_game(board):
 def main():
     
     date = datetime.datetime.now()
-    current_time = date.strftime("%b%d_%H%M")
+    current_time = date.strftime("%b%d_%H-M")
     file = open("data/multi/new/"+current_time+".txt", "a")
     file.write("Multi - new rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
     
