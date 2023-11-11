@@ -9,7 +9,7 @@ import datetime
 # from gym import spaces
 
 
-BOARD_SIZE = 9
+BOARD_SIZE = 5
 ITERATIONS = 1000
 PROCESSES_NUM = 7
 
