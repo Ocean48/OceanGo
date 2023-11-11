@@ -283,7 +283,7 @@ def main():
     else:
         print("AI wins!")
         
-    file.write(final_game+"\n\n\n\n\n")
+    file.write(final_game+"\n")
 
 if __name__ == "__main__":
     main()
