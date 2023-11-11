@@ -9,7 +9,7 @@ import datetime
 # from gym import spaces
 
 
-BOARD_SIZE = 5
+BOARD_SIZE = 3
 ITERATIONS = 1000
 PROCESSES_NUM = 7
 
@@ -325,7 +325,7 @@ def render_game(board):
 def main():
     
     date = datetime.datetime.now()
-    current_time = date.strftime("%b %d-%H:%M")
+    current_time = date.strftime("%H:%M")
     file = open("data/multi/new/"+current_time+".txt", "a")
     file.write("Multi - new rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
     
