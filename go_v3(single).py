@@ -251,7 +251,7 @@ def main():
     date = datetime.datetime.now()
     current_time = date.strftime("%Y %B %d - %H:%M:%S")
     file = open("data/single/"+current_time+".txt", "a")
-    file.write("Single:\n"+"Board size:",BOARD_SIZE, "\nIterations:",ITERATIONS)
+    file.write("Single:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS)+"\n")
     
     
     board_size = BOARD_SIZE
@@ -272,7 +272,7 @@ def main():
             game.make_move(*ai_move)
         end = time.time()
         print(3-game.current_player, " Time=", end - start)
-        file.write(3-game.current_player, " Time=", end - start+"\n")
+        file.write(str(3-game.current_player)+ " Time="+ str(end - start)+"\n")
 
     final_game = render_game(game.get_state())
     winner = game.get_winner()
