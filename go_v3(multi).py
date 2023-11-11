@@ -4,11 +4,12 @@ import math
 import copy
 import multiprocessing
 import time
+import datetime
 # import gym
 # from gym import spaces
 
 
-BOARD_SIZE = 2
+BOARD_SIZE = 9
 ITERATIONS = 1000
 PROCESSES_NUM = 7
 
@@ -308,11 +309,11 @@ def render_game(board):
                 out += ". "
                 print(".", end=" ")  # An empty intersection
             elif board[i][j] == 1:
-                out += "● "
-                print("●", end=" ")  # Player 1's stone  ○⚪◯
-            elif board[i][j] == 2:
                 out += "○ "
-                print("○", end=" ")  # Player 2's stone   ●⚫⬤
+                print("○", end=" ")  # Player 1's stone  ○⚪◯
+            elif board[i][j] == 2:
+                out += "● "
+                print("●", end=" ")  # Player 2's stone   ●⚫⬤
             # ⬜⬛➕
         print()
         out += "\n"
@@ -323,7 +324,9 @@ def render_game(board):
 # Define the main game loop
 def main():
     
-    file = open("data.txt", "a")
+    date = datetime.datetime.now()
+    current_time = date.strftime("%Y %B %d - %H:%M:%S")
+    file = open("data/multi/new/"+current_time+".txt", "a")
     file.write("Multi - new rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
     
     start = 0
@@ -334,13 +337,13 @@ def main():
     while not game.is_game_over():
         render_game(game.get_state())
         if game.current_player == 1:
-            x, y = map(int, input("Enter your move (x y): ").split())
-            x -= 1  # Adjust the input by subtracting 1 from the row coordinate
-            y -= 1  # Adjust the input by subtracting 1 from the column coordinate
+            # x, y = map(int, input("Enter your move (x y): ").split())
+            # x -= 1  # Adjust the input by subtracting 1 from the row coordinate
+            # y -= 1  # Adjust the input by subtracting 1 from the column coordinate
             start = time.time()
-            # ai_move = ai_play_parallel(game)  # Use the parallel AI function
-            # game.make_move(*ai_move)
-            game.make_move(x, y)
+            ai_move = ai_play_parallel(game)  # Use the parallel AI function
+            game.make_move(*ai_move)
+            # game.make_move(x, y)
         else:
             start = time.time()
             ai_move = ai_play_parallel(game)  # Use the parallel AI function

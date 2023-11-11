@@ -3,6 +3,7 @@ import numpy as np
 import math
 import copy
 import time
+import datetime
 # import gym
 # from gym import spaces
 
@@ -247,9 +248,10 @@ def render_game(board):
 # Define the main game loop
 def main():
     
-    file = open("data.txt", "a")
+    date = datetime.datetime.now()
+    current_time = date.strftime("%Y %B %d - %H:%M:%S")
+    file = open("data/single/"+current_time+".txt", "a")
     file.write("Single:\n"+"Board size:",BOARD_SIZE, "\nIterations:",ITERATIONS)
-    
     
     
     board_size = BOARD_SIZE
