@@ -4,11 +4,12 @@ import math
 import copy
 import multiprocessing
 import time
+import datetime
 # import gym
 # from gym import spaces
 
 
-BOARD_SIZE = 9
+BOARD_SIZE = 5
 ITERATIONS = 1000
 PROCESSES_NUM = 6
 
@@ -29,7 +30,8 @@ class GoGame:
         x, y = move
         if not self.is_valid_move(move):
             return False
-        test_board = [row[:] for row in self.board]
+        # test_board = [row[:] for row in self.board]   # old version
+        test_board = copy.deepcopy(self.board)
         test_board[x][y] = self.current_player
         for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
             nx, ny = x + dx, y + dy
@@ -264,19 +266,32 @@ def ai_play_parallel(board, iterations=ITERATIONS, num_processes=PROCESSES_NUM):
 
 # Define the rendering function for the game board
 def render_game(board):
+    out = ""
     for i in range(len(board)):
         for j in range(len(board[i])):
             if board[i][j] == " ":
+                out += ". "
                 print(".", end=" ")  # An empty intersection
             elif board[i][j] == 1:
-                print("O", end=" ")  # Player 1's stone
+                out += "● "
+                print("●", end=" ")  # Player 1's stone  ○⚪◯
             elif board[i][j] == 2:
-                print("X", end=" ")  # Player 2's stone
+                out += "○ "
+                print("○", end=" ")  # Player 2's stone   ●⚫⬤
+            # ⬜⬛➕
         print()
+        out += "\n"
     print("------------------------------------")
+    out += "------------------------------------------------------------------------"
+    return out
 
 # Define the main game loop
 def main():
+    
+    date = datetime.datetime.now()
+    current_time = date.strftime("%Y %B %d - %H:%M:%S")
+    file = open("data/multi/old/"+current_time+".txt", "a")
+    file.write("Multi - old rules:\n"+"Board size:",BOARD_SIZE, "\nIterations:",ITERATIONS, "Processes number:",PROCESSES_NUM)
     
     start = 0
     
@@ -297,9 +312,10 @@ def main():
             game.make_move(*ai_move)
         end = time.time()
         print(3-game.current_player, " Time=", end - start)
+        file.write(3-game.current_player, " Time=", end - start+"\n")
             
 
-    render_game(game.get_state())
+    final_game = render_game(game.get_state())
     winner = game.get_winner()
     if winner == 0:
         print("It's a tie!")
@@ -307,6 +323,8 @@ def main():
         print("You win!")
     else:
         print("AI wins!")
+        
+    file.write(final_game+"\n\n\n\n\n")
 
 if __name__ == "__main__":
     main()

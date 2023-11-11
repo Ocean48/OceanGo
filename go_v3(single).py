@@ -3,11 +3,12 @@ import numpy as np
 import math
 import copy
 import time
+import datetime
 # import gym
 # from gym import spaces
 
 
-BOARD_SIZE = 9
+BOARD_SIZE = 5
 ITERATIONS = 1000
 
 # Define the GoGame class to represent the game board and rules
@@ -225,19 +226,34 @@ def ai_play(board, iterations=ITERATIONS):
 
 # Define the rendering function for the game board
 def render_game(board):
+    out = ""
     for i in range(len(board)):
         for j in range(len(board[i])):
             if board[i][j] == " ":
+                out += ". "
                 print(".", end=" ")  # An empty intersection
             elif board[i][j] == 1:
-                print("O", end=" ")  # Player 1's stone
+                out += "● "
+                print("●", end=" ")  # Player 1's stone  ○⚪◯
             elif board[i][j] == 2:
-                print("X", end=" ")  # Player 2's stone
+                out += "○ "
+                print("○", end=" ")  # Player 2's stone   ●⚫⬤
+            # ⬜⬛➕
         print()
+        out += "\n"
     print("------------------------------------")
+    out += "------------------------------------------------------------------------"
+    return out
 
 # Define the main game loop
 def main():
+    
+    date = datetime.datetime.now()
+    current_time = date.strftime("%Y %B %d - %H:%M:%S")
+    file = open("data/single/"+current_time+".txt", "a")
+    file.write("Single:\n"+"Board size:",BOARD_SIZE, "\nIterations:",ITERATIONS)
+    
+    
     board_size = BOARD_SIZE
     game = GoGame(board_size)
     start = 0
@@ -256,8 +272,9 @@ def main():
             game.make_move(*ai_move)
         end = time.time()
         print(3-game.current_player, " Time=", end - start)
+        file.write(3-game.current_player, " Time=", end - start+"\n")
 
-    render_game(game.get_state())
+    final_game = render_game(game.get_state())
     winner = game.get_winner()
     if winner == 0:
         print("It's a tie!")
@@ -265,6 +282,8 @@ def main():
         print("You win!")
     else:
         print("AI wins!")
+        
+    file.write(final_game+"\n\n\n\n\n")
 
 if __name__ == "__main__":
     main()
