@@ -9,7 +9,7 @@ import datetime
 # from gym import spaces
 
 
-BOARD_SIZE = 3
+BOARD_SIZE = 6
 ITERATIONS = 1000
 PROCESSES_NUM = 7
 
@@ -338,13 +338,13 @@ def main():
         game_board_out = render_game(game.get_state())
         file.write(game_board_out+"\n")
         if game.current_player == 1:
-            # x, y = map(int, input("Enter your move (x y): ").split())
-            # x -= 1  # Adjust the input by subtracting 1 from the row coordinate
-            # y -= 1  # Adjust the input by subtracting 1 from the column coordinate
+            x, y = map(int, input("Enter your move (x y): ").split())
+            x -= 1  # Adjust the input by subtracting 1 from the row coordinate
+            y -= 1  # Adjust the input by subtracting 1 from the column coordinate
             start = time.time()
-            ai_move = ai_play_parallel(game)  # Use the parallel AI function
-            game.make_move(*ai_move)
-            # game.make_move(x, y)
+            # ai_move = ai_play_parallel(game)  # Use the parallel AI function
+            # game.make_move(*ai_move)
+            game.make_move(x, y)
         else:
             start = time.time()
             ai_move = ai_play_parallel(game)  # Use the parallel AI function
