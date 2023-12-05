@@ -5,8 +5,6 @@ import copy
 import multiprocessing
 import time
 import datetime
-import pygame
-import sys
 # import gym
 # from gym import spaces
 
@@ -323,143 +321,52 @@ def render_game(board):
     out += "------------------------------------------------------------------------"
     return out
 
-
-
-SCREEN_SIZE = (BOARD_SIZE + 1) * 100
-GRID_SIZE = 100
-
-def draw_board(screen, game):
-    screen.fill((0, 207, 207))  # Fill the screen with white color
-
-    # Draw grid lines
-    for i in range(1, BOARD_SIZE + 1):
-        pygame.draw.line(screen, (0, 0, 0), (i * GRID_SIZE, 0+GRID_SIZE), (i * GRID_SIZE, SCREEN_SIZE-GRID_SIZE), 2)
-        pygame.draw.line(screen, (0, 0, 0), (0+GRID_SIZE, i * GRID_SIZE), (SCREEN_SIZE-GRID_SIZE, i * GRID_SIZE), 2)
-
-    # Draw stones at the intersections
-    for i in range(BOARD_SIZE):
-        for j in range(BOARD_SIZE):
-            # Calculate the coordinates of the intersection point
-            x = (j + 1) * GRID_SIZE
-            y = (i + 1) * GRID_SIZE
-
-            if game.board[i][j] == 1:
-                pygame.draw.circle(screen, (0, 0, 0), (x, y), GRID_SIZE // 2 - 5)
-            elif game.board[i][j] == 2:
-                pygame.draw.circle(screen, (194, 194, 194), (x, y), GRID_SIZE // 2 - 5)
-
-    pygame.display.flip()
-
-
 # Define the main game loop
 def main():
+    
     date = datetime.datetime.now()
     current_time = date.strftime("%Y.%b.%d_%Hh%Mm")
-    file = open("data/multi/old/"+current_time+".txt", "a", encoding='utf-8')
-    file.write("Multi - old rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
+    file = open("data/multi/new/"+current_time+".txt", "a", encoding='utf-8')
+    file.write("Multi - new rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
     
     start = 0
     
     board_size = BOARD_SIZE
     game = GoGame(board_size)
-    
-    pygame.init()
-    screen = pygame.display.set_mode((SCREEN_SIZE, SCREEN_SIZE))
-    pygame.display.set_caption("Go Game")
-    
-    while not game.is_game_over():
-        draw_board(screen, game)
-        
-        if game.current_player == 1:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-                elif event.type == pygame.MOUSEBUTTONDOWN and game.current_player == 1:
-                    print("Player")
-                    x, y = event.pos
-                    print(x,y)
-                    x = round(x/GRID_SIZE)
-                    y = round(y/GRID_SIZE)
-                    game.make_move(y-1, x-1)
-                    game_board_out = render_game(game.get_state())
-                    file.write("\n"+str(3-game.current_player) + "\n" + game_board_out)
-                
 
+    while not game.is_game_over():
+        game_board_out = render_game(game.get_state())
+        file.write(game_board_out+"\n")
+        if game.current_player == 1:
+            x, y = map(int, input("Enter your move (x y): ").split())
+            x -= 1  # Adjust the input by subtracting 1 from the row coordinate
+            y -= 1  # Adjust the input by subtracting 1 from the column coordinate
+            start = time.time()
+            # ai_move = ai_play_parallel(game)  # Use the parallel AI function
+            # game.make_move(*ai_move)
+            game.make_move(x, y)
         else:
-            print("AI")
             start = time.time()
             ai_move = ai_play_parallel(game)  # Use the parallel AI function
             game.make_move(*ai_move)
-            end = time.time()
-            game_board_out = render_game(game.get_state())
-            file.write("\n"+str(3-game.current_player) + "   Time= " + str(end - start)+"\n"+game_board_out)
-            # print(3-game.current_player, " Time=", end - start)
+        end = time.time()
+        print(3-game.current_player, " Time=", end - start)
+        file.write(str(3-game.current_player)+ "   Time=" + str(end - start)+"\n")
             
 
-    # game_board_out = render_game(game.get_state())
-    # file.write(game_board_out+"\n")
+    game_board_out = render_game(game.get_state())
+    file.write(game_board_out+"\n")
     winner = game.get_winner()
     if winner == 0:
         print("It's a tie!")
-        # file.write("Tie")
+        file.write("Tie")
     elif winner == 1:
         print("You win!")
-        # file.write("You win")
+        file.write("You win")
     else:
         print("AI wins!")
-        # file.write("AI win")
+        file.write("AI win")
         
-    
 
 if __name__ == "__main__":
     main()
-# # Define the main game loop
-# def main():
-    
-#     date = datetime.datetime.now()
-#     current_time = date.strftime("%Y.%b.%d_%Hh%Mm")
-#     file = open("data/multi/new/"+current_time+".txt", "a", encoding='utf-8')
-#     file.write("Multi - new rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
-    
-#     start = 0
-    
-#     board_size = BOARD_SIZE
-#     game = GoGame(board_size)
-
-#     while not game.is_game_over():
-#         game_board_out = render_game(game.get_state())
-#         file.write(game_board_out+"\n")
-#         if game.current_player == 1:
-#             x, y = map(int, input("Enter your move (x y): ").split())
-#             x -= 1  # Adjust the input by subtracting 1 from the row coordinate
-#             y -= 1  # Adjust the input by subtracting 1 from the column coordinate
-#             start = time.time()
-#             # ai_move = ai_play_parallel(game)  # Use the parallel AI function
-#             # game.make_move(*ai_move)
-#             game.make_move(x, y)
-#         else:
-#             start = time.time()
-#             ai_move = ai_play_parallel(game)  # Use the parallel AI function
-#             game.make_move(*ai_move)
-#         end = time.time()
-#         print(3-game.current_player, " Time=", end - start)
-#         file.write(str(3-game.current_player)+ "   Time=" + str(end - start)+"\n")
-            
-
-#     game_board_out = render_game(game.get_state())
-#     file.write(game_board_out+"\n")
-#     winner = game.get_winner()
-#     if winner == 0:
-#         print("It's a tie!")
-#         file.write("Tie")
-#     elif winner == 1:
-#         print("You win!")
-#         file.write("You win")
-#     else:
-#         print("AI wins!")
-#         file.write("AI win")
-        
-
-# if __name__ == "__main__":
-#     main()
