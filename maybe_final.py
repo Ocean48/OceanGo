@@ -273,11 +273,11 @@ def render_game(board):
                 out += ". "
                 print(".", end=" ")  # An empty intersection
             elif board[i][j] == 1:
-                out += "● "
-                print("●", end=" ")  # Player 1's stone  ○⚪◯
-            elif board[i][j] == 2:
                 out += "○ "
-                print("○", end=" ")  # Player 2's stone   ●⚫⬤
+                print("○", end=" ")  # Player 1's stone  ○⚪◯
+            elif board[i][j] == 2:
+                out += "● "
+                print("●", end=" ")  # Player 2's stone   ●⚫⬤
             # ⬜⬛➕
         print()
         out += "\n"

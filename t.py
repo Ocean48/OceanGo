@@ -5,6 +5,8 @@ import copy
 import multiprocessing
 import time
 import datetime
+import pygame
+import sys
 # import gym
 # from gym import spaces
 
@@ -24,20 +26,8 @@ class GoGame:
 
     def is_valid_move(self, move):
         x, y = move
-        if not (0 <= x < self.board_size and 0 <= y < self.board_size) or self.board[x][y] != ' ':
-            return False
+        return 0 <= x < self.board_size and 0 <= y < self.board_size and self.board[x][y] == ' '
 
-        # Create a copy of the board for testing the move
-        test_board = copy.deepcopy(self.board)
-        test_board[x][y] = self.current_player
-        captured_stones = self._get_captured_stones((x, y), test_board)
-
-        if self.current_player == 1:
-            return not captured_stones
-        else:
-            return True
-        
-        
     def is_suicide_move(self, move):
         x, y = move
         if not self.is_valid_move(move):
@@ -109,40 +99,16 @@ class GoGame:
 
     def make_move(self, x, y):
         move = x, y
-        if self.is_valid_move(move):
-            # Create a copy of the board for testing the move
-            test_board = copy.deepcopy(self.board)
-            test_board[x][y] = self.current_player
-            captured_stones = self._get_captured_stones((x, y), test_board)
-
-            if not captured_stones:
-                self.board[x][y] = self.current_player
-
-                if self.ko_point == move:
-                    self.ko_point = None
-                else:
-                    self.ko_point = None
-                self.remove_captured_stones()  # Remove captured stones after each move
-                self._switch_player()
-                return True
+        if self.is_valid_move(move) and not self.is_suicide_move(move):
+            self.board[x][y] = self.current_player
+            if self.ko_point == move:
+                self.ko_point = None
+            else:
+                self.ko_point = None
+            self.remove_captured_stones()  # Remove captured stones after each move
+            self._switch_player()
+            return True
         return False
-    
-    def _get_captured_stones(self, move, board):
-        x, y = move
-        color = board[x][y]
-        captured_stones = set()
-
-        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < self.board_size and 0 <= ny < self.board_size and board[nx][ny] != ' ':
-                group = self._find_group((nx, ny))
-                if not self._has_liberties_in_group(group):
-                    if color == self.current_player:  # Check if it's self-capture
-                        captured_stones.update(group)
-                    elif color != self.current_player:  # Check if it's an opponent's group
-                        captured_stones.discard((x, y))
-
-        return captured_stones
 
 
     def _switch_player(self):
@@ -321,52 +287,119 @@ def render_game(board):
     out += "------------------------------------------------------------------------"
     return out
 
+
+SCREEN_SIZE = (BOARD_SIZE + 1) * 100
+GRID_SIZE = 100
+
+def draw_board(screen, game):
+    screen.fill((0, 255, 255))  # Fill the screen with white color
+
+    # Draw grid lines
+    for i in range(1, BOARD_SIZE + 1):
+        pygame.draw.line(screen, (0, 0, 0), (i * GRID_SIZE, 0+GRID_SIZE), (i * GRID_SIZE, SCREEN_SIZE-GRID_SIZE), 2)
+        pygame.draw.line(screen, (0, 0, 0), (0+GRID_SIZE, i * GRID_SIZE), (SCREEN_SIZE-GRID_SIZE, i * GRID_SIZE), 2)
+
+    # Draw stones at the intersections
+    for i in range(BOARD_SIZE):
+        for j in range(BOARD_SIZE):
+            # Calculate the coordinates of the intersection point
+            x = (j + 1) * GRID_SIZE
+            y = (i + 1) * GRID_SIZE
+
+            if game.board[i][j] == 1:
+                pygame.draw.circle(screen, (0, 0, 0), (x, y), GRID_SIZE // 2 - 5)
+            elif game.board[i][j] == 2:
+                pygame.draw.circle(screen, (255, 255, 255), (x, y), GRID_SIZE // 2 - 5)
+
+    pygame.display.flip()
+
+
 # Define the main game loop
 def main():
-    
     date = datetime.datetime.now()
     current_time = date.strftime("%Y.%b.%d_%Hh%Mm")
-    file = open("data/multi/new/"+current_time+".txt", "a", encoding='utf-8')
-    file.write("Multi - new rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
+    # file = open("data/multi/old/"+current_time+".txt", "a", encoding='utf-8')
+    # file.write("Multi - old rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
     
     start = 0
     
     board_size = BOARD_SIZE
     game = GoGame(board_size)
+    
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_SIZE, SCREEN_SIZE))
+    pygame.display.set_caption("Go Game")
+    
+    # while True:
+    #     for event in pygame.event.get():
+    #         if event.type == pygame.QUIT:
+    #             pygame.quit()
+    #             sys.exit()
+    #         elif event.type == pygame.MOUSEBUTTONDOWN and game.current_player == 1:
+    #             x, y = event.pos
+    #             x //= GRID_SIZE
+    #             y //= GRID_SIZE
+    #             game.make_move(x, y)
+
+    #     game_board_out = render_game(game.get_state())
+    #     draw_board(screen, game)
+
+    #     if game.current_player == 2:
+    #         ai_move = ai_play_parallel(game)
+    #         game.make_move(*ai_move)
+
+    #     pygame.time.delay(100)
 
     while not game.is_game_over():
+        
         game_board_out = render_game(game.get_state())
-        file.write(game_board_out+"\n")
+        draw_board(screen, game)
+        # file.write(game_board_out+"\n")
+        
+    
+        # game_board_out = render_game(game.get_state())
+        # file.write(game_board_out+"\n")
         if game.current_player == 1:
-            x, y = map(int, input("Enter your move (x y): ").split())
-            x -= 1  # Adjust the input by subtracting 1 from the row coordinate
-            y -= 1  # Adjust the input by subtracting 1 from the column coordinate
-            start = time.time()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == pygame.MOUSEBUTTONDOWN and game.current_player == 1:
+                    x, y = event.pos
+                    x //= GRID_SIZE
+                    y //= GRID_SIZE
+                    game.make_move(x, y)
+                
+            # x, y = map(int, input("Enter your move (x y): ").split())
+            # x -= 1  # Adjust the input by subtracting 1 from the row coordinate
+            # y -= 1  # Adjust the input by subtracting 1 from the column coordinate
+            # start = time.time()
+            # game.make_move(x, y)
             # ai_move = ai_play_parallel(game)  # Use the parallel AI function
             # game.make_move(*ai_move)
-            game.make_move(x, y)
         else:
             start = time.time()
             ai_move = ai_play_parallel(game)  # Use the parallel AI function
             game.make_move(*ai_move)
         end = time.time()
         print(3-game.current_player, " Time=", end - start)
-        file.write(str(3-game.current_player)+ "   Time=" + str(end - start)+"\n")
+        # file.write(str(3-game.current_player) + "   Time= " + str(end - start)+"\n")
             
 
     game_board_out = render_game(game.get_state())
-    file.write(game_board_out+"\n")
+    # file.write(game_board_out+"\n")
     winner = game.get_winner()
     if winner == 0:
         print("It's a tie!")
-        file.write("Tie")
+        # file.write("Tie")
     elif winner == 1:
         print("You win!")
-        file.write("You win")
+        # file.write("You win")
     else:
         print("AI wins!")
-        file.write("AI win")
+        # file.write("AI win")
         
+    
 
 if __name__ == "__main__":
     main()
