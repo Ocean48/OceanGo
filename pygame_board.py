@@ -23,9 +23,9 @@ def draw_board(screen, game):
             y = (i + 1) * GRID_SIZE
             
             if P == 1:
-                pygame.draw.circle(screen, (0, 0, 0), (x, y), GRID_SIZE // 2 - 5)
+                pygame.draw.circle(screen, (0, 0, 0), (x, y), GRID_SIZE // 2 - 10)
             elif P == 2:
-                pygame.draw.circle(screen, (255, 255, 255), (x, y), GRID_SIZE // 2 - 5)
+                pygame.draw.circle(screen, (255, 255, 255), (x, y), GRID_SIZE // 2 - 10)
 
             print(game)
     P = 3-P

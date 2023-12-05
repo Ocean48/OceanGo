@@ -307,9 +307,9 @@ def draw_board(screen, game):
             y = (i + 1) * GRID_SIZE
 
             if game.board[i][j] == 1:
-                pygame.draw.circle(screen, (0, 0, 0), (x, y), GRID_SIZE // 2 - 5)
+                pygame.draw.circle(screen, (0, 0, 0), (x, y), GRID_SIZE // 2 - 10)
             elif game.board[i][j] == 2:
-                pygame.draw.circle(screen, (194, 194, 194), (x, y), GRID_SIZE // 2 - 5)
+                pygame.draw.circle(screen, (194, 194, 194), (x, y), GRID_SIZE // 2 - 10)
 
     pygame.display.flip()
 
