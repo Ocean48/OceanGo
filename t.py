@@ -330,32 +330,8 @@ def main():
     screen = pygame.display.set_mode((SCREEN_SIZE, SCREEN_SIZE))
     pygame.display.set_caption("Go Game")
     
-    # while True:
-    #     for event in pygame.event.get():
-    #         if event.type == pygame.QUIT:
-    #             pygame.quit()
-    #             sys.exit()
-    #         elif event.type == pygame.MOUSEBUTTONDOWN and game.current_player == 1:
-    #             x, y = event.pos
-    #             x //= GRID_SIZE
-    #             y //= GRID_SIZE
-    #             game.make_move(x, y)
-
-    #     game_board_out = render_game(game.get_state())
-    #     draw_board(screen, game)
-
-    #     if game.current_player == 2:
-    #         ai_move = ai_play_parallel(game)
-    #         game.make_move(*ai_move)
-
-    #     pygame.time.delay(100)
-
     while not game.is_game_over():
-        
-        game_board_out = render_game(game.get_state())
         draw_board(screen, game)
-        print("rate")
-        
         
         if game.current_player == 1:
             for event in pygame.event.get():
@@ -363,34 +339,29 @@ def main():
                     pygame.quit()
                     sys.exit()
                 elif event.type == pygame.MOUSEBUTTONDOWN and game.current_player == 1:
+                    print("Player")
                     x, y = event.pos
                     print(x,y)
                     x //= GRID_SIZE
                     y //= GRID_SIZE
                     game.make_move(y-1, x-1)
-                    file.write(str(3-game.current_player)+"\n" + game_board_out)
+                    game_board_out = render_game(game.get_state())
+                    file.write("\n"+str(3-game.current_player) + "\n" + game_board_out)
                 
-            # x, y = map(int, input("Enter your move (x y): ").split())
-            # x -= 1  # Adjust the input by subtracting 1 from the row coordinate
-            # y -= 1  # Adjust the input by subtracting 1 from the column coordinate
-            # start = time.time()
-            # game.make_move(x, y)
-            # ai_move = ai_play_parallel(game)  # Use the parallel AI function
-            # game.make_move(*ai_move)
+
         else:
-            print("ai")
+            print("AI")
             start = time.time()
             ai_move = ai_play_parallel(game)  # Use the parallel AI function
             game.make_move(*ai_move)
-        # if game.current_player == 2:
-        #     file.write(str(3-game.current_player)+"\n" + game_board_out)
-        end = time.time()
-        print(3-game.current_player, " Time=", end - start)
-        # file.write(str(3-game.current_player) + "   Time= " + str(end - start)+"\n")
+            end = time.time()
+            game_board_out = render_game(game.get_state())
+            file.write("\n"+str(3-game.current_player) + "   Time= " + str(end - start)+"\n"+game_board_out)
+            # print(3-game.current_player, " Time=", end - start)
             
 
-    game_board_out = render_game(game.get_state())
-    file.write(game_board_out+"\n")
+    # game_board_out = render_game(game.get_state())
+    # file.write(game_board_out+"\n")
     winner = game.get_winner()
     if winner == 0:
         print("It's a tie!")
