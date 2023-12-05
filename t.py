@@ -342,8 +342,8 @@ def main():
                     print("Player")
                     x, y = event.pos
                     print(x,y)
-                    x //= GRID_SIZE
-                    y //= GRID_SIZE
+                    x = round(x/GRID_SIZE)
+                    y = round(y/GRID_SIZE)
                     game.make_move(y-1, x-1)
                     game_board_out = render_game(game.get_state())
                     file.write("\n"+str(3-game.current_player) + "\n" + game_board_out)
