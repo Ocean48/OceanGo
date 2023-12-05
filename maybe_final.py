@@ -9,7 +9,7 @@ import datetime
 # from gym import spaces
 
 
-BOARD_SIZE = 9
+BOARD_SIZE = 6
 ITERATIONS = 1000
 PROCESSES_NUM = 7
 
@@ -291,7 +291,7 @@ def main():
     date = datetime.datetime.now()
     current_time = date.strftime("%Y.%b.%d_%Hh%Mm")
     file = open("data/multi/old/"+current_time+".txt", "a", encoding='utf-8')
-    file.write("Multi - old rules:\n"+"Board size:",BOARD_SIZE, "\nIterations:",ITERATIONS, "Processes number:",PROCESSES_NUM)
+    file.write("Multi - old rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
     
     start = 0
     
@@ -307,13 +307,15 @@ def main():
             y -= 1  # Adjust the input by subtracting 1 from the column coordinate
             start = time.time()
             game.make_move(x, y)
+            # ai_move = ai_play_parallel(game)  # Use the parallel AI function
+            # game.make_move(*ai_move)
         else:
             start = time.time()
             ai_move = ai_play_parallel(game)  # Use the parallel AI function
             game.make_move(*ai_move)
         end = time.time()
         print(3-game.current_player, " Time=", end - start)
-        file.write(3-game.current_player, " Time=", end - start+"\n")
+        file.write(str(3-game.current_player) + "   Time= " + str(end - start)+"\n")
             
 
     game_board_out = render_game(game.get_state())
