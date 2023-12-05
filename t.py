@@ -292,7 +292,7 @@ SCREEN_SIZE = (BOARD_SIZE + 1) * 100
 GRID_SIZE = 100
 
 def draw_board(screen, game):
-    screen.fill((0, 255, 255))  # Fill the screen with white color
+    screen.fill((0, 207, 207))  # Fill the screen with white color
 
     # Draw grid lines
     for i in range(1, BOARD_SIZE + 1):
@@ -309,7 +309,7 @@ def draw_board(screen, game):
             if game.board[i][j] == 1:
                 pygame.draw.circle(screen, (0, 0, 0), (x, y), GRID_SIZE // 2 - 5)
             elif game.board[i][j] == 2:
-                pygame.draw.circle(screen, (255, 255, 255), (x, y), GRID_SIZE // 2 - 5)
+                pygame.draw.circle(screen, (194, 194, 194), (x, y), GRID_SIZE // 2 - 5)
 
     pygame.display.flip()
 
@@ -318,8 +318,8 @@ def draw_board(screen, game):
 def main():
     date = datetime.datetime.now()
     current_time = date.strftime("%Y.%b.%d_%Hh%Mm")
-    # file = open("data/multi/old/"+current_time+".txt", "a", encoding='utf-8')
-    # file.write("Multi - old rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
+    file = open("data/multi/old/"+current_time+".txt", "a", encoding='utf-8')
+    file.write("Multi - old rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
     
     start = 0
     
@@ -354,11 +354,9 @@ def main():
         
         game_board_out = render_game(game.get_state())
         draw_board(screen, game)
-        # file.write(game_board_out+"\n")
+        print("rate")
         
-    
-        # game_board_out = render_game(game.get_state())
-        # file.write(game_board_out+"\n")
+        
         if game.current_player == 1:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -366,9 +364,11 @@ def main():
                     sys.exit()
                 elif event.type == pygame.MOUSEBUTTONDOWN and game.current_player == 1:
                     x, y = event.pos
+                    print(x,y)
                     x //= GRID_SIZE
                     y //= GRID_SIZE
-                    game.make_move(x, y)
+                    game.make_move(y-1, x-1)
+                    file.write(str(3-game.current_player)+"\n" + game_board_out)
                 
             # x, y = map(int, input("Enter your move (x y): ").split())
             # x -= 1  # Adjust the input by subtracting 1 from the row coordinate
@@ -378,16 +378,19 @@ def main():
             # ai_move = ai_play_parallel(game)  # Use the parallel AI function
             # game.make_move(*ai_move)
         else:
+            print("ai")
             start = time.time()
             ai_move = ai_play_parallel(game)  # Use the parallel AI function
             game.make_move(*ai_move)
+        # if game.current_player == 2:
+        #     file.write(str(3-game.current_player)+"\n" + game_board_out)
         end = time.time()
         print(3-game.current_player, " Time=", end - start)
         # file.write(str(3-game.current_player) + "   Time= " + str(end - start)+"\n")
             
 
     game_board_out = render_game(game.get_state())
-    # file.write(game_board_out+"\n")
+    file.write(game_board_out+"\n")
     winner = game.get_winner()
     if winner == 0:
         print("It's a tie!")
