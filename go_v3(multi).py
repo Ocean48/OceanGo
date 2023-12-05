@@ -355,8 +355,8 @@ def draw_board(screen, game):
 def main():
     date = datetime.datetime.now()
     current_time = date.strftime("%Y.%b.%d_%Hh%Mm")
-    file = open("data/multi/old/"+current_time+".txt", "a", encoding='utf-8')
-    file.write("Multi - old rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
+    file = open("data/multi/new/"+current_time+".txt", "a", encoding='utf-8')
+    file.write("Multi - new rules:\n"+"Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
     
     start = 0
     
