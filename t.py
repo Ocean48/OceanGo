@@ -1,5 +1,4 @@
 import random
-import numpy as np
 import math
 import copy
 import multiprocessing
@@ -7,6 +6,7 @@ import time
 import datetime
 import pygame
 import sys
+#import numpy as np
 # import gym
 # from gym import spaces
 
