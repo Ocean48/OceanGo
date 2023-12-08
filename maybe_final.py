@@ -347,17 +347,15 @@ def main():
                     game.make_move(y-1, x-1)
                     game_board_out = render_game(game.get_state())
                     file.write("\n"+str(3-game.current_player) + "\n" + game_board_out)
-                
-
         else:
             print("AI")
             start = time.time()
             ai_move = ai_play_parallel(game)  # Use the parallel AI function
             game.make_move(*ai_move)
             end = time.time()
+            print(3-game.current_player, " Time=", end - start)
             game_board_out = render_game(game.get_state())
             file.write("\n"+str(3-game.current_player) + "   Time= " + str(end - start)+"\n"+game_board_out)
-            # print(3-game.current_player, " Time=", end - start)
             
 
     # game_board_out = render_game(game.get_state())
