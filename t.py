@@ -264,6 +264,7 @@ def ai_play_parallel(board, iterations=ITERATIONS, num_processes=PROCESSES_NUM):
         children.extend(child_list)
 
     best_move = max(children, key=lambda c: c.visit_count)
+    print(best_move.move, best_move.visit_count, best_move.total_value)
     return best_move.move
 
 # Define the rendering function for the game board
