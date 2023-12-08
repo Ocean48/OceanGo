@@ -11,7 +11,7 @@ import sys
 # from gym import spaces
 
 
-BOARD_SIZE = 6
+BOARD_SIZE = 9
 ITERATIONS = 1000
 PROCESSES_NUM = 7
 
@@ -213,6 +213,7 @@ def backpropagate(node, result):
         node = node.parent
 
 # Define the main MCTS function
+# Old
 def mcts(root, iterations):
     for _ in range(iterations):
         node = select(root)
@@ -221,6 +222,7 @@ def mcts(root, iterations):
         backpropagate(node, result)
 
 # Define the AI's move selection using MCTS
+# Old
 def ai_play(board, iterations=ITERATIONS):
     root = MCTSTreeNode()
     root.state = board
@@ -289,8 +291,8 @@ def render_game(board):
     return out
 
 
-SCREEN_SIZE = (BOARD_SIZE + 1) * 100
-GRID_SIZE = 100
+SCREEN_SIZE = (BOARD_SIZE + 1) * 80
+GRID_SIZE = 80
 
 def draw_board(screen, game):
     screen.fill((0, 207, 207))  # Fill the screen with white color
@@ -330,10 +332,9 @@ def main():
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_SIZE, SCREEN_SIZE))
     pygame.display.set_caption("Go Game")
+    draw_board(screen, game)
     
     while not game.is_game_over():
-        draw_board(screen, game)
-        
         if game.current_player == 1:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -347,6 +348,7 @@ def main():
                     y = round(y/GRID_SIZE)
                     game.make_move(y-1, x-1)
                     game_board_out = render_game(game.get_state())
+                    draw_board(screen, game)
                     file.write("\n"+str(3-game.current_player) + "\n" + game_board_out)
                 
 
@@ -356,9 +358,11 @@ def main():
             ai_move = ai_play_parallel(game)  # Use the parallel AI function
             game.make_move(*ai_move)
             end = time.time()
+            print(3-game.current_player, " Time=", end - start)
             game_board_out = render_game(game.get_state())
+            draw_board(screen, game)
             file.write("\n"+str(3-game.current_player) + "   Time= " + str(end - start)+"\n"+game_board_out)
-            # print(3-game.current_player, " Time=", end - start)
+            
             
 
     # game_board_out = render_game(game.get_state())
