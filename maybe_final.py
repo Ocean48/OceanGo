@@ -15,6 +15,10 @@ BOARD_SIZE = 6
 ITERATIONS = 1000
 PROCESSES_NUM = 7
 
+SCREEN_SIZE = (BOARD_SIZE + 1) * 100
+GRID_SIZE = 100
+
+
 # Define the GoGame class to represent the game board and rules
 class GoGame:
     def __init__(self, board_size=BOARD_SIZE):
@@ -131,9 +135,9 @@ class GoGame:
         player1_stones = sum(row.count(1) for row in self.board)
         player2_stones = sum(row.count(2) for row in self.board)
         if player1_stones > player2_stones:
-            return 1  # Player 1 wins
+            return -1  # Player 1 wins
         elif player2_stones > player1_stones:
-            return 2  # Player 2 wins
+            return 1  # Player 2 wins (AI)
         else:
             return 0  # Draw
 
@@ -287,10 +291,6 @@ def render_game(board):
     out += "------------------------------------------------------------------------"
     return out
 
-
-SCREEN_SIZE = (BOARD_SIZE + 1) * 100
-GRID_SIZE = 100
-
 def draw_board(screen, game):
     screen.fill((0, 207, 207))  # Fill the screen with white color
 
@@ -312,10 +312,11 @@ def draw_board(screen, game):
                 pygame.draw.circle(screen, (194, 194, 194), (x, y), GRID_SIZE // 2 - 10)
 
     pygame.display.flip()
-
+    
 
 # Define the main game loop
 def main():
+    
     date = datetime.datetime.now()
     current_time = date.strftime("%Y.%b.%d_%Hh%Mm")
     file = open("data/multi/old/"+current_time+".txt", "a", encoding='utf-8')
@@ -331,23 +332,42 @@ def main():
     pygame.display.set_caption("Go Game")
     
     while not game.is_game_over():
+        px, py = 0, 0
         draw_board(screen, game)
         
-        if game.current_player == 1:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-                elif event.type == pygame.MOUSEBUTTONDOWN and game.current_player == 1:
-                    print("Player")
-                    x, y = event.pos
-                    print(x,y)
-                    x = round(x/GRID_SIZE)
-                    y = round(y/GRID_SIZE)
-                    game.make_move(y-1, x-1)
-                    game_board_out = render_game(game.get_state())
-                    file.write("\n"+str(3-game.current_player) + "\n" + game_board_out)
-        else:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                print("Player")
+                px, py = event.pos
+                print(px,py)
+                px = round(px/GRID_SIZE)
+                py = round(py/GRID_SIZE)
+                # game.make_move(py-1, px-1)
+                # game_board_out = render_game(game.get_state())
+                # file.write("\n"+str(3-game.current_player) + "\n" + game_board_out)
+        
+        if game.current_player == 1 and (px!=0 and py!=0):
+            game.make_move(py-1, px-1)
+            game_board_out = render_game(game.get_state())
+            file.write("\n"+str(3-game.current_player) + "\n" + game_board_out)
+            # for event in pygame.event.get():
+            #     if event.type == pygame.QUIT:
+            #         pygame.quit()
+            #         sys.exit()
+            #     elif event.type == pygame.MOUSEBUTTONDOWN and game.current_player == 1:
+            #         print("Player")
+            #         px, py = event.pos
+            #         print(px,py)
+            #         px = round(px/GRID_SIZE)
+            #         py = round(py/GRID_SIZE)
+            #         game.make_move(py-1, px-1)
+            #         game_board_out = render_game(game.get_state())
+            #         file.write("\n"+str(3-game.current_player) + "\n" + game_board_out)
+        elif game.current_player == 2:
+            print("else")
             print("AI")
             start = time.time()
             ai_move = ai_play_parallel(game)  # Use the parallel AI function
@@ -364,10 +384,10 @@ def main():
     if winner == 0:
         print("It's a tie!")
         # file.write("Tie")
-    elif winner == 1:
+    elif winner == -1:
         print("You win!")
         # file.write("You win")
-    else:
+    elif winner == 1:
         print("AI wins!")
         # file.write("AI win")
         
