@@ -215,7 +215,7 @@ def backpropagate(node, result):
         node.visit_count += 1
         node.total_value += result
         node = node.parent
-
+'''
 # Define the main MCTS function
 def mcts(root, iterations):
     for _ in range(iterations):
@@ -232,7 +232,7 @@ def ai_play(board, iterations=ITERATIONS):
     mcts(root, iterations)
     best_move = max(root.children, key=lambda c: c.visit_count)
     return best_move.move
-
+'''
 # Define the main MCTS function for parallel execution
 def mcts_parallel(root, iterations, return_dict):
     for _ in range(iterations):
@@ -266,10 +266,21 @@ def ai_play_parallel(board, iterations=ITERATIONS, num_processes=PROCESSES_NUM):
     children = []
     for child_list in return_dict.values():
         children.extend(child_list)
+        
+    for n in children:
+        print_tree_structure(n, 1)
 
     best_move = max(children, key=lambda c: c.visit_count)
+    print("Best Move:", best_move.move, "Visit Count:", best_move.visit_count)
+    
     return best_move.move
 
+def print_tree_structure(node, depth):
+    if node is not None:
+        print("  " * depth, f"Move: {node.move}, Visit Count: {node.visit_count}")
+        for child in node.children:
+            print_tree_structure(child, depth + 1)
+            
 # Define the rendering function for the game board
 def render_game(board):
     out = ""
