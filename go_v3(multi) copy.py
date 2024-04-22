@@ -11,7 +11,7 @@ import datetime
 
 BOARD_SIZE = 6
 ITERATIONS = 1000
-PROCESSES_NUM = 7
+PROCESSES_NUM = 4
 
 # Define the GoGame class to represent the game board and rules
 class GoGame:

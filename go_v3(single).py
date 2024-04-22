@@ -8,7 +8,7 @@ import datetime
 # from gym import spaces
 
 
-BOARD_SIZE = 5
+BOARD_SIZE = 6
 ITERATIONS = 1000
 
 # Define the GoGame class to represent the game board and rules
