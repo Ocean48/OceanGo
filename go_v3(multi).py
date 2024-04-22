@@ -11,7 +11,7 @@ import sys
 # from gym import spaces
 
 
-BOARD_SIZE = 6
+BOARD_SIZE = 9
 ITERATIONS = 1000
 PROCESSES_NUM = 7
 

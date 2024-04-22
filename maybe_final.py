@@ -11,7 +11,7 @@ import sys
 # from gym import spaces
 
 
-BOARD_SIZE = 6
+BOARD_SIZE = 9
 ITERATIONS = 1000
 PROCESSES_NUM = 7
 
@@ -215,7 +215,7 @@ def backpropagate(node, result):
         node.visit_count += 1
         node.total_value += result
         node = node.parent
-'''
+
 # Define the main MCTS function
 def mcts(root, iterations):
     for _ in range(iterations):
@@ -232,7 +232,7 @@ def ai_play(board, iterations=ITERATIONS):
     mcts(root, iterations)
     best_move = max(root.children, key=lambda c: c.visit_count)
     return best_move.move
-'''
+
 # Define the main MCTS function for parallel execution
 def mcts_parallel(root, iterations, return_dict):
     for _ in range(iterations):
@@ -382,6 +382,7 @@ def main():
             print("AI")
             start = time.time()
             ai_move = ai_play_parallel(game)  # Use the parallel AI function
+            # ai_move = ai_play(game)  # Use the parallel AI function
             game.make_move(*ai_move)
             end = time.time()
             print(3-game.current_player, " Time=", end - start)
