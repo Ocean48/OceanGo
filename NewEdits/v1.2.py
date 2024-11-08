@@ -302,12 +302,20 @@ def mcts_worker(game_state, iterations):
         node = select(root)
         result = simulate(node)
         backpropagate(node, result)
-        if i % 10 == 0:  # Print every 100 iterations
+        if i % 10 == 0:  # Print every 50 iterations to show progress
             print(f"AI thinking... Iteration {i}")
-    # Collect visit counts of root's children
+
+    # Filter out 'pass' moves unless it's the only option
     move_visits = {}
     for child in root.children:
-        move_visits[child.move] = child.visit_count
+        if child.move != 'pass' or len(root.children) == 1:
+            move_visits[child.move] = child.visit_count
+
+    # Introduce a small random factor to encourage board coverage
+    random_factor = 0.05
+    for move in move_visits:
+        move_visits[move] *= (1 + random.uniform(-random_factor, random_factor))
+
     return move_visits
 
 def ai_play(game, iterations=ITERATIONS, num_processes=PROCESSES_NUM):
@@ -320,6 +328,7 @@ def ai_play(game, iterations=ITERATIONS, num_processes=PROCESSES_NUM):
         results.append(pool.apply_async(mcts_worker, args=(game_state, iterations_per_process)))
     pool.close()
     pool.join()
+
     move_visits_total = {}
     for res in results:
         move_visits = res.get()
@@ -328,10 +337,11 @@ def ai_play(game, iterations=ITERATIONS, num_processes=PROCESSES_NUM):
                 move_visits_total[move] += visits
             else:
                 move_visits_total[move] = visits
-    # Choose the move with the highest visit count
+
+    # Choose the move with the highest adjusted visit count, avoiding 'pass' if possible
     if not move_visits_total:
         return 'pass'
-    best_move = max(move_visits_total.items(), key=lambda x: x[1])[0]
+    best_move = max((mv for mv in move_visits_total.items() if mv[0] != 'pass'), key=lambda x: x[1], default=('pass', 0))[0]
     print(f"AI selected move: {best_move}")
     game_state.make_move(best_move)
     print("Board after AI's move:")
