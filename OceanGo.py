@@ -8,9 +8,9 @@ import datetime
 import pygame
 import sys
 
-BOARD_SIZE = 6
+BOARD_SIZE = 9
 ITERATIONS = 1000
-PROCESSES_NUM = 7
+PROCESSES_NUM = 15
 
 GRID_SIZE = 80 # Adjust based on screen size
 SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE 
