@@ -19,7 +19,7 @@ SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE
 NUM_PROCESSES = 14
 
 # MCTS settings:
-MCTS_MODE = "time"        # "iterations" or "time"
+MCTS_MODE = "iterations"        # "iterations" or "time"
 MCTS_ITERATIONS = 1000    # total MCTS playouts (if MCTS_MODE="iterations")
 MCTS_TIME_LIMIT = 1.0     # time in seconds (if MCTS_MODE="time")
 
@@ -27,7 +27,7 @@ KOMI = 6.5                # Komi for White
 USE_TRANSPOSITION_TABLE = True
 
 # Transposition Table settings
-TT_MAX_SIZE = 800_000     # maximum entries in TT (random eviction when full)
+TT_MAX_SIZE = 500_000     # maximum entries in TT (random eviction when full)
 
 ############################################################
 #                 ZOBRIST HASHING SETUP                    #
