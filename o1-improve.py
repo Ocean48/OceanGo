@@ -16,12 +16,12 @@ GRID_SIZE = 80
 SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE
 
 # Number of CPU cores to use:
-NUM_PROCESSES = 14
+NUM_PROCESSES = 20
 
 # MCTS settings:
-MCTS_MODE = "iterations"        # "iterations" or "time"
+MCTS_MODE = "time"        # "iterations" or "time"
 MCTS_ITERATIONS = 1000    # total MCTS playouts (if MCTS_MODE="iterations")
-MCTS_TIME_LIMIT = 1.0     # time in seconds (if MCTS_MODE="time")
+MCTS_TIME_LIMIT = 5.0     # time in seconds (if MCTS_MODE="time")
 
 KOMI = 6.5                # Komi for White
 USE_TRANSPOSITION_TABLE = True
@@ -368,25 +368,37 @@ def backup(node, result):
 def run_mcts_iterations(root, iterations=1000):
     """
     Run MCTS for 'iterations' playouts (fixed iteration mode).
+    Adding partial progress prints every N iterations.
     """
     transposition_table = {}
     if USE_TRANSPOSITION_TABLE:
         transposition_table[root.zobrist_hash] = root
 
-    for _ in range(iterations):
+    # ADDED FOR PROGRESS (set how often to print)
+    print_interval = max(1, iterations // 10)
+
+    for i in range(iterations):
         leaf = tree_policy(root, transposition_table)
         outcome = heuristic_rollout(leaf.state)
         backup(leaf, outcome)
 
+        # ADDED FOR PROGRESS: Print partial info every 'print_interval' iterations
+        if (i+1) % print_interval == 0:
+            best_c, best_v = get_best_child_info(root)
+            print(f"[Worker debug] iteration={i+1}, best_child_move={best_c}, best_child_visits={best_v}")
+
 def run_mcts_time(root, time_limit=5.0):
     """
     Run MCTS until 'time_limit' seconds have elapsed (time-based mode).
+    We'll print progress every ~N expansions or every 1 second, whichever.
     """
     start = time.time()
     transposition_table = {}
     if USE_TRANSPOSITION_TABLE:
         transposition_table[root.zobrist_hash] = root
 
+    i = 0
+    next_print = start + 1.0  # ADDED FOR PROGRESS: print at least once every second
     while True:
         now = time.time()
         if now - start > time_limit:
@@ -394,6 +406,26 @@ def run_mcts_time(root, time_limit=5.0):
         leaf = tree_policy(root, transposition_table)
         outcome = heuristic_rollout(leaf.state)
         backup(leaf, outcome)
+        i += 1
+
+        # ADDED FOR PROGRESS: Print partial info every 1 second
+        if now >= next_print:
+            best_c, best_v = get_best_child_info(root)
+            print(f"[Worker debug] expansions={i}, best_child_move={best_c}, best_child_visits={best_v}")
+            next_print = now + 1.0
+
+def get_best_child_info(root):
+    """
+    Helper to find which child has the highest visit_count
+    (and return (move, visit_count)) for debug printing.
+    """
+    best_child_move = None
+    best_visits = -1
+    for child in root.children:
+        if child.visit_count > best_visits:
+            best_visits = child.visit_count
+            best_child_move = child.move
+    return best_child_move, best_visits
 
 ############################################################
 #         PARALLEL MCTS WORKERS (TIME or ITERATIONS)       #
@@ -430,7 +462,7 @@ def ai_play_parallel(board,
                      num_processes=NUM_PROCESSES):
     """
     Main parallel MCTS entry point:
-      - If mcts_mode == "time", each process runs MCTS for time_limit/num_processes (approx total = time_limit)
+      - If mcts_mode == "time", each process runs MCTS for time_limit/num_processes
       - If mcts_mode == "iterations", each runs total_iterations//num_processes
     Collect children stats => pick best move
     """
@@ -517,7 +549,7 @@ def get_click_coord(pos):
 def main():
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_SIZE, SCREEN_SIZE))
-    pygame.display.set_caption("Go with Bounded TT + Parallel MCTS (Iterations/Time)")
+    pygame.display.set_caption("Go with Bounded TT + Parallel MCTS (Iterations/Time) [Progress Prints]")
 
     game = GoGame(board_size=BOARD_SIZE, komi=KOMI)
 
