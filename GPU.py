@@ -567,9 +567,9 @@ def main():
     # -------------------------------------------------------
     # 2) Self-play / 3) Train 
     # -------------------------------------------------------
-    N_ITER = 100          # number of self-play iterations
-    N_GAMES_PER_ITER = 100  # how many self-play games each iteration
-    N_MCTS_SIMS = 100      # MCTS simulations
+    N_ITER = 2          # number of self-play iterations
+    N_GAMES_PER_ITER = 2  # how many self-play games each iteration
+    N_MCTS_SIMS = 10000      # MCTS simulations
     all_data = []
 
     for iteration in range(N_ITER):
