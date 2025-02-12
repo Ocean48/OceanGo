@@ -326,6 +326,8 @@ def mcts_run(root: NN_MCTS_Node, net, n_simulations=50, temp=1.0):
         mcts_expand(leaf)
         # backup
         mcts_backup(leaf, leaf.value)
+        
+        print(f"Simulations: {_+1}/{n_simulations}, N={root.N}")
 
     # build policy vector for root moves
     move_N = [(mv, ch.N) for mv, ch in root.children.items()]
