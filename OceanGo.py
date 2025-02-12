@@ -10,9 +10,9 @@ import sys
 
 BOARD_SIZE = 13
 ITERATIONS = 50000
-PROCESSES_NUM = 18
+PROCESSES_NUM = 16
 
-GRID_SIZE = 80 # Adjust based on screen size
+GRID_SIZE = 50 # Adjust based on screen size
 SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE 
 
 
