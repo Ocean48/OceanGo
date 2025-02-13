@@ -327,7 +327,8 @@ def mcts_run(root: NN_MCTS_Node, net, n_simulations=50, temp=1.0):
         # backup
         mcts_backup(leaf, leaf.value)
         
-        print(f"Simulations: {_+1}/{n_simulations}, N={root.N}")
+        if _ % 1000 == 0:
+            print(f"Simulations: {_+1}/{n_simulations}, N={root.N}")
 
     # build policy vector for root moves
     move_N = [(mv, ch.N) for mv, ch in root.children.items()]
@@ -569,8 +570,8 @@ def main():
     # -------------------------------------------------------
     # 2) Self-play / 3) Train 
     # -------------------------------------------------------
-    N_ITER = 2          # number of self-play iterations
-    N_GAMES_PER_ITER = 2  # how many self-play games each iteration
+    N_ITER = 10          # number of self-play iterations
+    N_GAMES_PER_ITER = 10  # how many self-play games each iteration
     N_MCTS_SIMS = 10000      # MCTS simulations
     all_data = []
 
