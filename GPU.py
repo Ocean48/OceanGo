@@ -585,7 +585,7 @@ def main():
     # -------------------------------------------------------
     N_ITER = 10          # number of self-play iterations
     N_GAMES_PER_ITER = 10  # how many self-play games each iteration
-    N_MCTS_SIMS = 10000      # MCTS simulations
+    N_MCTS_SIMS = 100      # MCTS simulations
     all_data = []
 
     for iteration in range(N_ITER):
@@ -601,6 +601,7 @@ def main():
                                            temp=1.0)
             iteration_data.extend(game_data)
             print(f"  Finished game {g+1}, collected {len(game_data)} states.")
+            logging.info(f"  Finished game {g+1}, collected {len(game_data)} states.")
         print(f"Total new data: {len(iteration_data)} states.")
 
         # Train the network on new data
@@ -612,6 +613,7 @@ def main():
         # Save the net after this iteration
         torch.save(net.state_dict(), "policy_value_net.pth")
         print("Model saved.\n")
+        logging.info(f"{iteration+1} iterations done. Model saved.")
 
     # -------------------------------------------------------
     # 4) Launch an interactive game with the trained net
