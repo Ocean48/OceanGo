@@ -1,0 +1,126 @@
+INFO:root:
+
+Starting log at 2025-02-18 15:26:53
+INFO:root:No existing model found. Starting a fresh model.
+INFO:root:==== Self-Play iteration 1 ====
+INFO:root:  Starting self-play game 1 in iteration 1...
+INFO:root:  Finished game 1, collected 217 states in 610.45 sec.
+INFO:root:  Starting self-play game 2 in iteration 1...
+INFO:root:  Finished game 2, collected 242 states in 620.59 sec.
+INFO:root:Total new data in iteration 1: 459 states.
+INFO:root:Training on new data...
+INFO:root:Epoch 1/5, Loss=6.0808
+INFO:root:Epoch 2/5, Loss=5.9146
+INFO:root:Epoch 3/5, Loss=5.8540
+INFO:root:Epoch 4/5, Loss=5.8151
+INFO:root:Epoch 5/5, Loss=5.7703
+INFO:root:Training completed in 1.57 seconds.
+INFO:root:Model saved at iteration 1.
+INFO:root:Iteration 1 duration: 1232.61 seconds.
+INFO:root:==== Self-Play iteration 2 ====
+INFO:root:  Starting self-play game 1 in iteration 2...
+INFO:root:  Finished game 1, collected 312 states in 500.07 sec.
+INFO:root:  Starting self-play game 2 in iteration 2...
+INFO:root:  Finished game 2, collected 217 states in 446.66 sec.
+INFO:root:Total new data in iteration 2: 529 states.
+INFO:root:Training on new data...
+INFO:root:Epoch 1/5, Loss=6.2858
+INFO:root:Epoch 2/5, Loss=5.7755
+INFO:root:Epoch 3/5, Loss=5.0187
+INFO:root:Epoch 4/5, Loss=4.9023
+INFO:root:Epoch 5/5, Loss=4.8270
+INFO:root:Training completed in 0.95 seconds.
+INFO:root:Model saved at iteration 2.
+INFO:root:Iteration 2 duration: 947.68 seconds.
+INFO:root:Total self-play time across all iterations: 2180.29 seconds.
+
+
+Starting log at 2025-02-18 17:16:15
+INFO:root:Loading existing model parameters from policy_value_net.pth
+INFO:root:==== Self-Play iteration 1 ====
+INFO:root:  Starting self-play game 1 in iteration 1...
+INFO:root:  Finished game 1, collected 217 states in 49.50 sec.
+INFO:root:  Starting self-play game 2 in iteration 1...
+INFO:root:  Finished game 2, collected 174 states in 42.52 sec.
+INFO:root:Total new data in iteration 1: 391 states.
+INFO:root:Training on replay buffer sample of size: 391
+INFO:root:Epoch 1/5, Loss=7.3763
+INFO:root:Epoch 2/5, Loss=6.1863
+INFO:root:Epoch 3/5, Loss=5.6807
+INFO:root:Epoch 4/5, Loss=5.4307
+INFO:root:Epoch 5/5, Loss=5.3480
+INFO:root:Training completed in 1.51 seconds.
+INFO:root:Model snapshot saved at iteration 1: policy_value_net_iter_1.pth
+INFO:root:Iteration 1 duration: 93.53 seconds.
+INFO:root:==== Self-Play iteration 2 ====
+INFO:root:  Starting self-play game 1 in iteration 2...
+INFO:root:  Finished game 1, collected 191 states in 48.36 sec.
+INFO:root:  Starting self-play game 2 in iteration 2...
+INFO:root:  Finished game 2, collected 228 states in 50.06 sec.
+INFO:root:Total new data in iteration 2: 419 states.
+INFO:root:Training on replay buffer sample of size: 810
+INFO:root:Epoch 1/5, Loss=5.4087
+INFO:root:Epoch 2/5, Loss=5.2447
+INFO:root:Epoch 3/5, Loss=5.1123
+INFO:root:Epoch 4/5, Loss=4.8292
+INFO:root:Epoch 5/5, Loss=4.5237
+INFO:root:Training completed in 1.33 seconds.
+INFO:root:Model snapshot saved at iteration 2: policy_value_net_iter_2.pth
+INFO:root:
+
+Starting log at 2025-02-18 17:31:44
+INFO:root:Loading existing model parameters from policy_value_net.pth
+INFO:root:==== Self-Play iteration 1 ====
+INFO:root:  Starting self-play game 1 in iteration 1...
+INFO:root:  Finished game 1, collected 190 states in 89.86 sec.
+INFO:root:  Starting self-play game 2 in iteration 1...
+INFO:root:  Finished game 2, collected 187 states in 85.29 sec.
+INFO:root:Total new data in iteration 1: 377 states.
+INFO:root:Training on replay buffer sample of size: 377
+INFO:root:Epoch 1/5, Loss=7.4122
+INFO:root:Epoch 2/5, Loss=6.1761
+INFO:root:Epoch 3/5, Loss=5.7974
+INFO:root:Epoch 4/5, Loss=5.4743
+INFO:root:Epoch 5/5, Loss=5.2341
+INFO:root:Training completed in 1.42 seconds.
+INFO:root:Model saved at iteration 1.
+INFO:root:Iteration 1 duration: 176.56 seconds.
+INFO:root:==== Self-Play iteration 2 ====
+INFO:root:  Starting self-play game 1 in iteration 2...
+INFO:root:  Finished game 1, collected 244 states in 92.88 sec.
+INFO:root:  Starting self-play game 2 in iteration 2...
+INFO:root:  Finished game 2, collected 194 states in 88.73 sec.
+INFO:root:Total new data in iteration 2: 438 states.
+INFO:root:Training on replay buffer sample of size: 815
+INFO:root:Epoch 1/5, Loss=5.2526
+INFO:root:Epoch 2/5, Loss=4.8882
+INFO:root:Epoch 3/5, Loss=4.6919
+INFO:root:Epoch 4/5, Loss=4.5091
+INFO:root:Epoch 5/5, Loss=4.3495
+INFO:root:Training completed in 1.29 seconds.
+INFO:root:Model saved at iteration 2.
+INFO:root:Iteration 2 duration: 182.90 seconds.
+INFO:root:==== Self-Play iteration 3 ====
+INFO:root:  Starting self-play game 1 in iteration 3...
+INFO:root:  Finished game 1, collected 186 states in 126.82 sec.
+INFO:root:  Starting self-play game 2 in iteration 3...
+INFO:root:  Finished game 2, collected 190 states in 122.64 sec.
+INFO:root:Total new data in iteration 3: 376 states.
+INFO:root:Training on replay buffer sample of size: 1000
+INFO:root:Epoch 1/5, Loss=4.7407
+INFO:root:Epoch 2/5, Loss=4.3978
+INFO:root:Epoch 3/5, Loss=4.2041
+INFO:root:Epoch 4/5, Loss=4.0308
+INFO:root:Epoch 5/5, Loss=3.8562
+INFO:root:Training completed in 2.06 seconds.
+INFO:root:Model saved at iteration 3.
+INFO:root:Iteration 3 duration: 251.52 seconds.
+INFO:root:Total self-play time across all iterations: 610.99 seconds.
+
+
+Starting log at 2025-02-18 18:14:40
+2025-02-18 18:14:40 - INFO - Loading existing model parameters from policy_value_net.pth
+2025-02-18 18:14:40 - INFO - ==== Self-Play iteration 1 ====
+2025-02-18 18:14:40 - INFO -   Starting self-play game 1 in iteration 1...
+2025-02-18 18:29:01 - INFO -   Finished game 1, collected 177 states in 861.16 sec.
+2025-02-18 18:29:01 - INFO -   Starting self-play game 2 in iteration 1...
