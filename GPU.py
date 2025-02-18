@@ -28,7 +28,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # ----------------------------------------
 script_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(script_dir)
-log_start = time.strftime("%Y%m%d-%H%M%S")
+log_start = time.strftime("%Y-%m-%d %H:%M:%S")
 logging.basicConfig(filename=f"{script_dir}/logs.log", level=logging.INFO)
 logging.info(f"\n\nStarting log at {log_start}")
 
@@ -338,10 +338,18 @@ def mcts_run(root: NN_MCTS_Node, net, n_simulations=50, temp=1.0):
         mcts_expand(leaf)
         # backup
         mcts_backup(leaf, leaf.value)
-        
-        if _ % 1000 == 0:
-            print(f"Simulations: {_+1}/{n_simulations}, N={root.N}")
-            logging.info(f"Simulations: {_+1}/{n_simulations}, N={root.N}")
+        # if n_simulations == 100:
+        #     if _ % 100 == 0:
+        #         print(f"Simulations: {_+1}/{n_simulations}, N={root.N}")
+        #         logging.info(f"Simulations: {_+1}/{n_simulations}, N={root.N}")
+        # elif n_simulations == 10:
+        #     if _ % 10 == 0:
+        #         print(f"Simulations: {_+1}/{n_simulations}, N={root.N}")
+        #         logging.info(f"Simulations: {_+1}/{n_simulations}, N={root.N}")
+        # else:
+        #     if _ % (n_simulations//10) == 0:
+        #         print(f"Simulations: {_+1}/{n_simulations}, N={root.N}")
+        #         logging.info(f"Simulations: {_+1}/{n_simulations}, N={root.N}")
 
     # build policy vector for root moves
     move_N = [(mv, ch.N) for mv, ch in root.children.items()]
@@ -479,6 +487,7 @@ def train_policy_value_net(net, data, batch_size=32, epochs=5, lr=1e-3):
             batch_losses.append(loss.item())
 
         print(f"Epoch {ep+1}/{epochs}, Loss={np.mean(batch_losses):.4f}")
+        logging.info(f"Epoch {ep+1}/{epochs}, Loss={np.mean(batch_losses):.4f}")
     net.eval()
 
 # ====================================================
@@ -547,6 +556,7 @@ def run_interactive_game(net):
         else:
             # Player 2 = AI
             print("AI thinking...")
+            logging.info("AI (Player 2) is thinking...")
             root = NN_MCTS_Node(game.copy())
             # Evaluate & expand root
             nn_batch_evaluate([root], net)
@@ -575,48 +585,74 @@ def main():
     net = PolicyValueNet(board_size=BOARD_SIZE).to(device)
     if os.path.isfile("policy_value_net.pth"):
         print("Loading existing model parameters...")
+        logging.info("Loading existing model parameters from policy_value_net.pth")
         net.load_state_dict(torch.load("policy_value_net.pth", map_location=device))
     else:
         print("No existing model found. Starting from scratch.")
+        logging.info("No existing model found. Starting a fresh model.")
     net.eval()
 
     # -------------------------------------------------------
     # 2) Self-play / 3) Train 
     # -------------------------------------------------------
-    N_ITER = 10          # number of self-play iterations
-    N_GAMES_PER_ITER = 10  # how many self-play games each iteration
-    N_MCTS_SIMS = 100      # MCTS simulations
-    all_data = []
+    N_ITER = 2            # number of self-play iterations
+    N_GAMES_PER_ITER = 2  # how many self-play games each iteration
+    N_MCTS_SIMS = 100     # MCTS simulations
+
+    # Track total time across all self-play iterations
+    total_start_time = time.time()
 
     for iteration in range(N_ITER):
+        iteration_start_time = time.time()
         print(f"==== Self-Play iteration {iteration+1} ====")
+        logging.info(f"==== Self-Play iteration {iteration+1} ====")
 
         # Gather data from a few self-play games
         iteration_data = []
         for g in range(N_GAMES_PER_ITER):
+            game_start_time = time.time()
             print(f"  Self-play game {g+1}...")
+            logging.info(f"  Starting self-play game {g+1} in iteration {iteration+1}...")
+
             game_data = self_play_one_game(net, 
                                            board_size=BOARD_SIZE, 
                                            n_mcts_sims=N_MCTS_SIMS, 
                                            temp=1.0)
             iteration_data.extend(game_data)
-            print(f"  Finished game {g+1}, collected {len(game_data)} states.")
-            logging.info(f"  Finished game {g+1}, collected {len(game_data)} states.")
-        print(f"Total new data: {len(iteration_data)} states.")
+
+            game_end_time = time.time()
+            game_duration = game_end_time - game_start_time
+            print(f"  Finished game {g+1}, collected {len(game_data)} states in {game_duration:.2f} sec.")
+            logging.info(f"  Finished game {g+1}, collected {len(game_data)} states in {game_duration:.2f} sec.")
+
+        print(f"Total new data this iteration: {len(iteration_data)} states.")
+        logging.info(f"Total new data in iteration {iteration+1}: {len(iteration_data)} states.")
 
         # Train the network on new data
-        # (Optionally combine with old data in a replay buffer.)
         if len(iteration_data) > 0:
+            train_start_time = time.time()
             print("Training on new data...")
+            logging.info("Training on new data...")
             train_policy_value_net(net, iteration_data, batch_size=32, epochs=5, lr=1e-3)
+            train_end_time = time.time()
+            logging.info(f"Training completed in {train_end_time - train_start_time:.2f} seconds.")
 
         # Save the net after this iteration
         torch.save(net.state_dict(), "policy_value_net.pth")
         print("Model saved.\n")
-        logging.info(f"{iteration+1} iterations done. Model saved.")
+        logging.info(f"Model saved at iteration {iteration+1}.")
+
+        iteration_end_time = time.time()
+        iteration_duration = iteration_end_time - iteration_start_time
+        logging.info(f"Iteration {iteration+1} duration: {iteration_duration:.2f} seconds.")
+
+    # Log total self-play time
+    total_end_time = time.time()
+    total_selfplay_time = total_end_time - total_start_time
+    logging.info(f"Total self-play time across all iterations: {total_selfplay_time:.2f} seconds.")
 
     # -------------------------------------------------------
-    # 4) Launch an interactive game with the trained net
+    # 5) Launch an interactive game with the trained net
     # -------------------------------------------------------
     run_interactive_game(net)
 
