@@ -1,3 +1,4 @@
+import logging
 import math
 import random
 import copy
@@ -5,6 +6,8 @@ import time
 import sys
 import os
 import numpy as np
+import sys
+import os
 
 import pygame
 import torch
@@ -19,6 +22,15 @@ BOARD_SIZE = 13
 GRID_SIZE = 50
 SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# ----------------------------------------
+# Logging
+# ----------------------------------------
+script_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(script_dir)
+log_start = time.strftime("%Y%m%d-%H%M%S")
+logging.basicConfig(filename=f"{script_dir}/logs.log", level=logging.INFO)
+logging.info(f"\n\nStarting log at {log_start}")
 
 # ====================================================
 #             Policy-Value Network
@@ -329,6 +341,7 @@ def mcts_run(root: NN_MCTS_Node, net, n_simulations=50, temp=1.0):
         
         if _ % 1000 == 0:
             print(f"Simulations: {_+1}/{n_simulations}, N={root.N}")
+            logging.info(f"Simulations: {_+1}/{n_simulations}, N={root.N}")
 
     # build policy vector for root moves
     move_N = [(mv, ch.N) for mv, ch in root.children.items()]
