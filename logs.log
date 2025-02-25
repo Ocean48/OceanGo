@@ -1,126 +1,266 @@
-INFO:root:
+2025-02-21 10:09:19 - INFO - 
 
-Starting log at 2025-02-18 15:26:53
-INFO:root:No existing model found. Starting a fresh model.
-INFO:root:==== Self-Play iteration 1 ====
-INFO:root:  Starting self-play game 1 in iteration 1...
-INFO:root:  Finished game 1, collected 217 states in 610.45 sec.
-INFO:root:  Starting self-play game 2 in iteration 1...
-INFO:root:  Finished game 2, collected 242 states in 620.59 sec.
-INFO:root:Total new data in iteration 1: 459 states.
-INFO:root:Training on new data...
-INFO:root:Epoch 1/5, Loss=6.0808
-INFO:root:Epoch 2/5, Loss=5.9146
-INFO:root:Epoch 3/5, Loss=5.8540
-INFO:root:Epoch 4/5, Loss=5.8151
-INFO:root:Epoch 5/5, Loss=5.7703
-INFO:root:Training completed in 1.57 seconds.
-INFO:root:Model saved at iteration 1.
-INFO:root:Iteration 1 duration: 1232.61 seconds.
-INFO:root:==== Self-Play iteration 2 ====
-INFO:root:  Starting self-play game 1 in iteration 2...
-INFO:root:  Finished game 1, collected 312 states in 500.07 sec.
-INFO:root:  Starting self-play game 2 in iteration 2...
-INFO:root:  Finished game 2, collected 217 states in 446.66 sec.
-INFO:root:Total new data in iteration 2: 529 states.
-INFO:root:Training on new data...
-INFO:root:Epoch 1/5, Loss=6.2858
-INFO:root:Epoch 2/5, Loss=5.7755
-INFO:root:Epoch 3/5, Loss=5.0187
-INFO:root:Epoch 4/5, Loss=4.9023
-INFO:root:Epoch 5/5, Loss=4.8270
-INFO:root:Training completed in 0.95 seconds.
-INFO:root:Model saved at iteration 2.
-INFO:root:Iteration 2 duration: 947.68 seconds.
-INFO:root:Total self-play time across all iterations: 2180.29 seconds.
-
-
-Starting log at 2025-02-18 17:16:15
-INFO:root:Loading existing model parameters from policy_value_net.pth
-INFO:root:==== Self-Play iteration 1 ====
-INFO:root:  Starting self-play game 1 in iteration 1...
-INFO:root:  Finished game 1, collected 217 states in 49.50 sec.
-INFO:root:  Starting self-play game 2 in iteration 1...
-INFO:root:  Finished game 2, collected 174 states in 42.52 sec.
-INFO:root:Total new data in iteration 1: 391 states.
-INFO:root:Training on replay buffer sample of size: 391
-INFO:root:Epoch 1/5, Loss=7.3763
-INFO:root:Epoch 2/5, Loss=6.1863
-INFO:root:Epoch 3/5, Loss=5.6807
-INFO:root:Epoch 4/5, Loss=5.4307
-INFO:root:Epoch 5/5, Loss=5.3480
-INFO:root:Training completed in 1.51 seconds.
-INFO:root:Model snapshot saved at iteration 1: policy_value_net_iter_1.pth
-INFO:root:Iteration 1 duration: 93.53 seconds.
-INFO:root:==== Self-Play iteration 2 ====
-INFO:root:  Starting self-play game 1 in iteration 2...
-INFO:root:  Finished game 1, collected 191 states in 48.36 sec.
-INFO:root:  Starting self-play game 2 in iteration 2...
-INFO:root:  Finished game 2, collected 228 states in 50.06 sec.
-INFO:root:Total new data in iteration 2: 419 states.
-INFO:root:Training on replay buffer sample of size: 810
-INFO:root:Epoch 1/5, Loss=5.4087
-INFO:root:Epoch 2/5, Loss=5.2447
-INFO:root:Epoch 3/5, Loss=5.1123
-INFO:root:Epoch 4/5, Loss=4.8292
-INFO:root:Epoch 5/5, Loss=4.5237
-INFO:root:Training completed in 1.33 seconds.
-INFO:root:Model snapshot saved at iteration 2: policy_value_net_iter_2.pth
-INFO:root:
-
-Starting log at 2025-02-18 17:31:44
-INFO:root:Loading existing model parameters from policy_value_net.pth
-INFO:root:==== Self-Play iteration 1 ====
-INFO:root:  Starting self-play game 1 in iteration 1...
-INFO:root:  Finished game 1, collected 190 states in 89.86 sec.
-INFO:root:  Starting self-play game 2 in iteration 1...
-INFO:root:  Finished game 2, collected 187 states in 85.29 sec.
-INFO:root:Total new data in iteration 1: 377 states.
-INFO:root:Training on replay buffer sample of size: 377
-INFO:root:Epoch 1/5, Loss=7.4122
-INFO:root:Epoch 2/5, Loss=6.1761
-INFO:root:Epoch 3/5, Loss=5.7974
-INFO:root:Epoch 4/5, Loss=5.4743
-INFO:root:Epoch 5/5, Loss=5.2341
-INFO:root:Training completed in 1.42 seconds.
-INFO:root:Model saved at iteration 1.
-INFO:root:Iteration 1 duration: 176.56 seconds.
-INFO:root:==== Self-Play iteration 2 ====
-INFO:root:  Starting self-play game 1 in iteration 2...
-INFO:root:  Finished game 1, collected 244 states in 92.88 sec.
-INFO:root:  Starting self-play game 2 in iteration 2...
-INFO:root:  Finished game 2, collected 194 states in 88.73 sec.
-INFO:root:Total new data in iteration 2: 438 states.
-INFO:root:Training on replay buffer sample of size: 815
-INFO:root:Epoch 1/5, Loss=5.2526
-INFO:root:Epoch 2/5, Loss=4.8882
-INFO:root:Epoch 3/5, Loss=4.6919
-INFO:root:Epoch 4/5, Loss=4.5091
-INFO:root:Epoch 5/5, Loss=4.3495
-INFO:root:Training completed in 1.29 seconds.
-INFO:root:Model saved at iteration 2.
-INFO:root:Iteration 2 duration: 182.90 seconds.
-INFO:root:==== Self-Play iteration 3 ====
-INFO:root:  Starting self-play game 1 in iteration 3...
-INFO:root:  Finished game 1, collected 186 states in 126.82 sec.
-INFO:root:  Starting self-play game 2 in iteration 3...
-INFO:root:  Finished game 2, collected 190 states in 122.64 sec.
-INFO:root:Total new data in iteration 3: 376 states.
-INFO:root:Training on replay buffer sample of size: 1000
-INFO:root:Epoch 1/5, Loss=4.7407
-INFO:root:Epoch 2/5, Loss=4.3978
-INFO:root:Epoch 3/5, Loss=4.2041
-INFO:root:Epoch 4/5, Loss=4.0308
-INFO:root:Epoch 5/5, Loss=3.8562
-INFO:root:Training completed in 2.06 seconds.
-INFO:root:Model saved at iteration 3.
-INFO:root:Iteration 3 duration: 251.52 seconds.
-INFO:root:Total self-play time across all iterations: 610.99 seconds.
-
-
-Starting log at 2025-02-18 18:14:40
-2025-02-18 18:14:40 - INFO - Loading existing model parameters from policy_value_net.pth
-2025-02-18 18:14:40 - INFO - ==== Self-Play iteration 1 ====
-2025-02-18 18:14:40 - INFO -   Starting self-play game 1 in iteration 1...
-2025-02-18 18:29:01 - INFO -   Finished game 1, collected 177 states in 861.16 sec.
-2025-02-18 18:29:01 - INFO -   Starting self-play game 2 in iteration 1...
+Starting log at 2025-02-21 10:09:19
+2025-02-21 10:09:19 - INFO - Loading existing model parameters from policy_value_net.pth
+2025-02-21 10:09:19 - INFO - ==== Self-Play iteration 1 ====
+2025-02-21 10:09:19 - INFO -   Starting self-play game 1 in iteration 1...
+2025-02-21 10:44:38 - INFO -   Finished game 1, collected 188 states in 2118.17 sec.
+2025-02-21 10:44:38 - INFO -   Starting self-play game 2 in iteration 1...
+2025-02-21 11:20:27 - INFO -   Finished game 2, collected 222 states in 2149.86 sec.
+2025-02-21 11:20:27 - INFO -   Starting self-play game 3 in iteration 1...
+2025-02-21 11:56:19 - INFO -   Finished game 3, collected 219 states in 2151.21 sec.
+2025-02-21 11:56:19 - INFO -   Starting self-play game 4 in iteration 1...
+2025-02-21 12:30:57 - INFO -   Finished game 4, collected 179 states in 2078.48 sec.
+2025-02-21 12:30:57 - INFO -   Starting self-play game 5 in iteration 1...
+2025-02-21 13:05:31 - INFO -   Finished game 5, collected 197 states in 2074.00 sec.
+2025-02-21 13:05:31 - INFO -   Starting self-play game 6 in iteration 1...
+2025-02-21 13:40:54 - INFO -   Finished game 6, collected 220 states in 2123.18 sec.
+2025-02-21 13:40:54 - INFO -   Starting self-play game 7 in iteration 1...
+2025-02-21 14:24:43 - INFO -   Finished game 7, collected 233 states in 2628.57 sec.
+2025-02-21 14:24:43 - INFO -   Starting self-play game 8 in iteration 1...
+2025-02-21 15:08:57 - INFO -   Finished game 8, collected 205 states in 2654.42 sec.
+2025-02-21 15:08:57 - INFO -   Starting self-play game 9 in iteration 1...
+2025-02-21 15:45:19 - INFO -   Finished game 9, collected 221 states in 2182.04 sec.
+2025-02-21 15:45:19 - INFO - Total new data in iteration 1: 1884 states.
+2025-02-21 15:45:19 - INFO - Training on replay buffer sample of size: 1000
+2025-02-21 15:45:22 - INFO - Epoch 1/5, Loss=5.5273
+2025-02-21 15:45:22 - INFO - Epoch 2/5, Loss=4.5923
+2025-02-21 15:45:22 - INFO - Epoch 3/5, Loss=4.2046
+2025-02-21 15:45:23 - INFO - Epoch 4/5, Loss=3.8693
+2025-02-21 15:45:23 - INFO - Epoch 5/5, Loss=3.6515
+2025-02-21 15:45:23 - INFO - Training completed in 3.94 seconds.
+2025-02-21 15:45:23 - INFO - Model saved at iteration 1.
+2025-02-21 15:45:23 - INFO - Iteration 1 duration: 20163.88 seconds.
+2025-02-21 15:45:23 - INFO - ==== Self-Play iteration 2 ====
+2025-02-21 15:45:23 - INFO -   Starting self-play game 1 in iteration 2...
+2025-02-21 16:20:53 - INFO -   Finished game 1, collected 196 states in 2129.45 sec.
+2025-02-21 16:20:53 - INFO -   Starting self-play game 2 in iteration 2...
+2025-02-21 16:55:49 - INFO -   Finished game 2, collected 194 states in 2096.14 sec.
+2025-02-21 16:55:49 - INFO -   Starting self-play game 3 in iteration 2...
+2025-02-21 17:31:37 - INFO -   Finished game 3, collected 208 states in 2147.87 sec.
+2025-02-21 17:31:37 - INFO -   Starting self-play game 4 in iteration 2...
+2025-02-21 18:07:42 - INFO -   Finished game 4, collected 203 states in 2164.96 sec.
+2025-02-21 18:07:42 - INFO -   Starting self-play game 5 in iteration 2...
+2025-02-21 18:42:54 - INFO -   Finished game 5, collected 205 states in 2112.20 sec.
+2025-02-21 18:42:54 - INFO -   Starting self-play game 6 in iteration 2...
+2025-02-21 19:16:49 - INFO -   Finished game 6, collected 193 states in 2035.13 sec.
+2025-02-21 19:16:49 - INFO -   Starting self-play game 7 in iteration 2...
+2025-02-21 19:52:50 - INFO -   Finished game 7, collected 225 states in 2161.04 sec.
+2025-02-21 19:52:50 - INFO -   Starting self-play game 8 in iteration 2...
+2025-02-21 20:25:55 - INFO -   Finished game 8, collected 197 states in 1984.84 sec.
+2025-02-21 20:25:55 - INFO -   Starting self-play game 9 in iteration 2...
+2025-02-21 20:59:43 - INFO -   Finished game 9, collected 203 states in 2027.95 sec.
+2025-02-21 20:59:43 - INFO - Total new data in iteration 2: 1824 states.
+2025-02-21 20:59:43 - INFO - Training on replay buffer sample of size: 1000
+2025-02-21 20:59:43 - INFO - Epoch 1/5, Loss=4.8903
+2025-02-21 20:59:44 - INFO - Epoch 2/5, Loss=4.3113
+2025-02-21 20:59:44 - INFO - Epoch 3/5, Loss=3.9928
+2025-02-21 20:59:45 - INFO - Epoch 4/5, Loss=3.7882
+2025-02-21 20:59:45 - INFO - Epoch 5/5, Loss=3.5932
+2025-02-21 20:59:45 - INFO - Training completed in 2.16 seconds.
+2025-02-21 20:59:45 - INFO - Model saved at iteration 2.
+2025-02-21 20:59:45 - INFO - Iteration 2 duration: 18861.76 seconds.
+2025-02-21 20:59:45 - INFO - ==== Self-Play iteration 3 ====
+2025-02-21 20:59:45 - INFO -   Starting self-play game 1 in iteration 3...
+2025-02-21 21:33:27 - INFO -   Finished game 1, collected 197 states in 2021.54 sec.
+2025-02-21 21:33:27 - INFO -   Starting self-play game 2 in iteration 3...
+2025-02-21 22:10:09 - INFO -   Finished game 2, collected 256 states in 2202.05 sec.
+2025-02-21 22:10:09 - INFO -   Starting self-play game 3 in iteration 3...
+2025-02-21 22:45:26 - INFO -   Finished game 3, collected 222 states in 2117.58 sec.
+2025-02-21 22:45:26 - INFO -   Starting self-play game 4 in iteration 3...
+2025-02-21 23:19:08 - INFO -   Finished game 4, collected 186 states in 2021.26 sec.
+2025-02-21 23:19:08 - INFO -   Starting self-play game 5 in iteration 3...
+2025-02-21 23:54:56 - INFO -   Finished game 5, collected 254 states in 2148.27 sec.
+2025-02-21 23:54:56 - INFO -   Starting self-play game 6 in iteration 3...
+2025-02-22 00:30:51 - INFO -   Finished game 6, collected 250 states in 2155.03 sec.
+2025-02-22 00:30:51 - INFO -   Starting self-play game 7 in iteration 3...
+2025-02-22 01:05:03 - INFO -   Finished game 7, collected 200 states in 2052.63 sec.
+2025-02-22 01:05:03 - INFO -   Starting self-play game 8 in iteration 3...
+2025-02-22 01:39:20 - INFO -   Finished game 8, collected 214 states in 2056.59 sec.
+2025-02-22 01:39:20 - INFO -   Starting self-play game 9 in iteration 3...
+2025-02-22 02:14:01 - INFO -   Finished game 9, collected 201 states in 2081.10 sec.
+2025-02-22 02:14:01 - INFO - Total new data in iteration 3: 1980 states.
+2025-02-22 02:14:01 - INFO - Training on replay buffer sample of size: 1000
+2025-02-22 02:14:02 - INFO - Epoch 1/5, Loss=4.9154
+2025-02-22 02:14:02 - INFO - Epoch 2/5, Loss=4.3417
+2025-02-22 02:14:02 - INFO - Epoch 3/5, Loss=4.0697
+2025-02-22 02:14:03 - INFO - Epoch 4/5, Loss=3.8185
+2025-02-22 02:14:03 - INFO - Epoch 5/5, Loss=3.6211
+2025-02-22 02:14:03 - INFO - Training completed in 2.07 seconds.
+2025-02-22 02:14:03 - INFO - Model saved at iteration 3.
+2025-02-22 02:14:03 - INFO - Iteration 3 duration: 18858.13 seconds.
+2025-02-22 02:14:03 - INFO - ==== Self-Play iteration 4 ====
+2025-02-22 02:14:03 - INFO -   Starting self-play game 1 in iteration 4...
+2025-02-22 02:47:37 - INFO -   Finished game 1, collected 179 states in 2013.32 sec.
+2025-02-22 02:47:37 - INFO -   Starting self-play game 2 in iteration 4...
+2025-02-22 03:22:22 - INFO -   Finished game 2, collected 200 states in 2085.63 sec.
+2025-02-22 03:22:22 - INFO -   Starting self-play game 3 in iteration 4...
+2025-02-22 03:57:04 - INFO -   Finished game 3, collected 213 states in 2081.81 sec.
+2025-02-22 03:57:04 - INFO -   Starting self-play game 4 in iteration 4...
+2025-02-22 04:31:04 - INFO -   Finished game 4, collected 192 states in 2040.36 sec.
+2025-02-22 04:31:04 - INFO -   Starting self-play game 5 in iteration 4...
+2025-02-22 05:05:59 - INFO -   Finished game 5, collected 248 states in 2094.23 sec.
+2025-02-22 05:05:59 - INFO -   Starting self-play game 6 in iteration 4...
+2025-02-22 05:41:08 - INFO -   Finished game 6, collected 229 states in 2109.62 sec.
+2025-02-22 05:41:08 - INFO -   Starting self-play game 7 in iteration 4...
+2025-02-22 06:14:45 - INFO -   Finished game 7, collected 189 states in 2017.05 sec.
+2025-02-22 06:14:45 - INFO -   Starting self-play game 8 in iteration 4...
+2025-02-22 06:50:37 - INFO -   Finished game 8, collected 263 states in 2151.82 sec.
+2025-02-22 06:50:37 - INFO -   Starting self-play game 9 in iteration 4...
+2025-02-22 07:24:53 - INFO -   Finished game 9, collected 203 states in 2056.21 sec.
+2025-02-22 07:24:53 - INFO - Total new data in iteration 4: 1916 states.
+2025-02-22 07:24:53 - INFO - Training on replay buffer sample of size: 1000
+2025-02-22 07:24:54 - INFO - Epoch 1/5, Loss=4.7817
+2025-02-22 07:24:54 - INFO - Epoch 2/5, Loss=4.3323
+2025-02-22 07:24:55 - INFO - Epoch 3/5, Loss=4.0504
+2025-02-22 07:24:55 - INFO - Epoch 4/5, Loss=3.8458
+2025-02-22 07:24:55 - INFO - Epoch 5/5, Loss=3.6423
+2025-02-22 07:24:55 - INFO - Training completed in 2.19 seconds.
+2025-02-22 07:24:55 - INFO - Model saved at iteration 4.
+2025-02-22 07:24:55 - INFO - Iteration 4 duration: 18652.24 seconds.
+2025-02-22 07:24:55 - INFO - ==== Self-Play iteration 5 ====
+2025-02-22 07:24:55 - INFO -   Starting self-play game 1 in iteration 5...
+2025-02-22 07:58:30 - INFO -   Finished game 1, collected 189 states in 2014.05 sec.
+2025-02-22 07:58:30 - INFO -   Starting self-play game 2 in iteration 5...
+2025-02-22 08:35:01 - INFO -   Finished game 2, collected 247 states in 2191.41 sec.
+2025-02-22 08:35:01 - INFO -   Starting self-play game 3 in iteration 5...
+2025-02-22 09:09:17 - INFO -   Finished game 3, collected 216 states in 2055.65 sec.
+2025-02-22 09:09:17 - INFO -   Starting self-play game 4 in iteration 5...
+2025-02-22 09:43:36 - INFO -   Finished game 4, collected 209 states in 2059.00 sec.
+2025-02-22 09:43:36 - INFO -   Starting self-play game 5 in iteration 5...
+2025-02-22 10:16:31 - INFO -   Finished game 5, collected 196 states in 1975.42 sec.
+2025-02-22 10:16:31 - INFO -   Starting self-play game 6 in iteration 5...
+2025-02-22 10:53:29 - INFO -   Finished game 6, collected 238 states in 2218.43 sec.
+2025-02-22 10:53:29 - INFO -   Starting self-play game 7 in iteration 5...
+2025-02-22 11:26:43 - INFO -   Finished game 7, collected 188 states in 1993.89 sec.
+2025-02-22 11:26:43 - INFO -   Starting self-play game 8 in iteration 5...
+2025-02-22 12:00:31 - INFO -   Finished game 8, collected 195 states in 2027.58 sec.
+2025-02-22 12:00:31 - INFO -   Starting self-play game 9 in iteration 5...
+2025-02-22 12:34:56 - INFO -   Finished game 9, collected 202 states in 2064.95 sec.
+2025-02-22 12:34:56 - INFO - Total new data in iteration 5: 1880 states.
+2025-02-22 12:34:56 - INFO - Training on replay buffer sample of size: 1000
+2025-02-22 12:34:56 - INFO - Epoch 1/5, Loss=4.5759
+2025-02-22 12:34:57 - INFO - Epoch 2/5, Loss=4.2330
+2025-02-22 12:34:57 - INFO - Epoch 3/5, Loss=3.9693
+2025-02-22 12:34:57 - INFO - Epoch 4/5, Loss=3.7500
+2025-02-22 12:34:58 - INFO - Epoch 5/5, Loss=3.5676
+2025-02-22 12:34:58 - INFO - Training completed in 2.08 seconds.
+2025-02-22 12:34:58 - INFO - Model saved at iteration 5.
+2025-02-22 12:34:58 - INFO - Iteration 5 duration: 18602.48 seconds.
+2025-02-22 12:34:58 - INFO - ==== Self-Play iteration 6 ====
+2025-02-22 12:34:58 - INFO -   Starting self-play game 1 in iteration 6...
+2025-02-22 13:09:44 - INFO -   Finished game 1, collected 238 states in 2086.19 sec.
+2025-02-22 13:09:44 - INFO -   Starting self-play game 2 in iteration 6...
+2025-02-22 13:47:57 - INFO -   Finished game 2, collected 275 states in 2293.33 sec.
+2025-02-22 13:47:57 - INFO -   Starting self-play game 3 in iteration 6...
+2025-02-22 14:21:44 - INFO -   Finished game 3, collected 189 states in 2026.61 sec.
+2025-02-22 14:21:44 - INFO -   Starting self-play game 4 in iteration 6...
+2025-02-22 14:58:44 - INFO -   Finished game 4, collected 251 states in 2220.06 sec.
+2025-02-22 14:58:44 - INFO -   Starting self-play game 5 in iteration 6...
+2025-02-22 15:33:24 - INFO -   Finished game 5, collected 205 states in 2079.72 sec.
+2025-02-22 15:33:24 - INFO -   Starting self-play game 6 in iteration 6...
+2025-02-22 16:06:42 - INFO -   Finished game 6, collected 193 states in 1998.45 sec.
+2025-02-22 16:06:42 - INFO -   Starting self-play game 7 in iteration 6...
+2025-02-22 16:44:31 - INFO -   Finished game 7, collected 262 states in 2268.73 sec.
+2025-02-22 16:44:31 - INFO -   Starting self-play game 8 in iteration 6...
+2025-02-22 17:18:47 - INFO -   Finished game 8, collected 215 states in 2055.50 sec.
+2025-02-22 17:18:47 - INFO -   Starting self-play game 9 in iteration 6...
+2025-02-22 17:53:07 - INFO -   Finished game 9, collected 218 states in 2060.11 sec.
+2025-02-22 17:53:07 - INFO - Total new data in iteration 6: 2046 states.
+2025-02-22 17:53:07 - INFO - Training on replay buffer sample of size: 1000
+2025-02-22 17:53:07 - INFO - Epoch 1/5, Loss=4.7738
+2025-02-22 17:53:07 - INFO - Epoch 2/5, Loss=4.4244
+2025-02-22 17:53:08 - INFO - Epoch 3/5, Loss=4.1261
+2025-02-22 17:53:08 - INFO - Epoch 4/5, Loss=3.8847
+2025-02-22 17:53:09 - INFO - Epoch 5/5, Loss=3.6695
+2025-02-22 17:53:09 - INFO - Training completed in 2.14 seconds.
+2025-02-22 17:53:09 - INFO - Model saved at iteration 6.
+2025-02-22 17:53:09 - INFO - Iteration 6 duration: 19090.84 seconds.
+2025-02-22 17:53:09 - INFO - ==== Self-Play iteration 7 ====
+2025-02-22 17:53:09 - INFO -   Starting self-play game 1 in iteration 7...
+2025-02-22 18:28:44 - INFO -   Finished game 1, collected 243 states in 2135.15 sec.
+2025-02-22 18:28:44 - INFO -   Starting self-play game 2 in iteration 7...
+2025-02-22 19:02:24 - INFO -   Finished game 2, collected 198 states in 2019.86 sec.
+2025-02-22 19:02:24 - INFO -   Starting self-play game 3 in iteration 7...
+2025-02-22 19:37:09 - INFO -   Finished game 3, collected 228 states in 2085.29 sec.
+2025-02-22 19:37:09 - INFO -   Starting self-play game 4 in iteration 7...
+2025-02-22 20:10:53 - INFO -   Finished game 4, collected 196 states in 2023.69 sec.
+2025-02-22 20:10:53 - INFO -   Starting self-play game 5 in iteration 7...
+2025-02-22 20:46:05 - INFO -   Finished game 5, collected 216 states in 2112.59 sec.
+2025-02-22 20:46:05 - INFO -   Starting self-play game 6 in iteration 7...
+2025-02-22 21:21:16 - INFO -   Finished game 6, collected 244 states in 2110.24 sec.
+2025-02-22 21:21:16 - INFO -   Starting self-play game 7 in iteration 7...
+2025-02-22 21:55:16 - INFO -   Finished game 7, collected 187 states in 2039.99 sec.
+2025-02-22 21:55:16 - INFO -   Starting self-play game 8 in iteration 7...
+2025-02-22 22:30:14 - INFO -   Finished game 8, collected 224 states in 2098.07 sec.
+2025-02-22 22:30:14 - INFO -   Starting self-play game 9 in iteration 7...
+2025-02-22 23:05:32 - INFO -   Finished game 9, collected 194 states in 2118.83 sec.
+2025-02-22 23:05:32 - INFO - Total new data in iteration 7: 1930 states.
+2025-02-22 23:05:32 - INFO - Training on replay buffer sample of size: 1000
+2025-02-22 23:05:33 - INFO - Epoch 1/5, Loss=4.8229
+2025-02-22 23:05:33 - INFO - Epoch 2/5, Loss=4.4224
+2025-02-22 23:05:34 - INFO - Epoch 3/5, Loss=4.1750
+2025-02-22 23:05:34 - INFO - Epoch 4/5, Loss=3.9525
+2025-02-22 23:05:35 - INFO - Epoch 5/5, Loss=3.7644
+2025-02-22 23:05:35 - INFO - Training completed in 2.06 seconds.
+2025-02-22 23:05:35 - INFO - Model saved at iteration 7.
+2025-02-22 23:05:35 - INFO - Iteration 7 duration: 18745.76 seconds.
+2025-02-22 23:05:35 - INFO - ==== Self-Play iteration 8 ====
+2025-02-22 23:05:35 - INFO -   Starting self-play game 1 in iteration 8...
+2025-02-22 23:40:38 - INFO -   Finished game 1, collected 225 states in 2103.25 sec.
+2025-02-22 23:40:38 - INFO -   Starting self-play game 2 in iteration 8...
+2025-02-23 00:14:31 - INFO -   Finished game 2, collected 206 states in 2032.89 sec.
+2025-02-23 00:14:31 - INFO -   Starting self-play game 3 in iteration 8...
+2025-02-23 00:49:59 - INFO -   Finished game 3, collected 243 states in 2128.11 sec.
+2025-02-23 00:49:59 - INFO -   Starting self-play game 4 in iteration 8...
+2025-02-23 01:25:38 - INFO -   Finished game 4, collected 252 states in 2139.35 sec.
+2025-02-23 01:25:38 - INFO -   Starting self-play game 5 in iteration 8...
+2025-02-23 01:59:48 - INFO -   Finished game 5, collected 186 states in 2049.98 sec.
+2025-02-23 01:59:48 - INFO -   Starting self-play game 6 in iteration 8...
+2025-02-23 02:34:01 - INFO -   Finished game 6, collected 215 states in 2052.78 sec.
+2025-02-23 02:34:01 - INFO -   Starting self-play game 7 in iteration 8...
+2025-02-23 03:07:38 - INFO -   Finished game 7, collected 179 states in 2017.55 sec.
+2025-02-23 03:07:38 - INFO -   Starting self-play game 8 in iteration 8...
+2025-02-23 03:41:35 - INFO -   Finished game 8, collected 196 states in 2036.62 sec.
+2025-02-23 03:41:35 - INFO -   Starting self-play game 9 in iteration 8...
+2025-02-23 04:15:19 - INFO -   Finished game 9, collected 188 states in 2024.33 sec.
+2025-02-23 04:15:19 - INFO - Total new data in iteration 8: 1890 states.
+2025-02-23 04:15:19 - INFO - Training on replay buffer sample of size: 1000
+2025-02-23 04:15:20 - INFO - Epoch 1/5, Loss=4.6887
+2025-02-23 04:15:20 - INFO - Epoch 2/5, Loss=4.3505
+2025-02-23 04:15:21 - INFO - Epoch 3/5, Loss=4.1088
+2025-02-23 04:15:21 - INFO - Epoch 4/5, Loss=3.9445
+2025-02-23 04:15:22 - INFO - Epoch 5/5, Loss=3.7518
+2025-02-23 04:15:22 - INFO - Training completed in 2.19 seconds.
+2025-02-23 04:15:22 - INFO - Model saved at iteration 8.
+2025-02-23 04:15:22 - INFO - Iteration 8 duration: 18587.05 seconds.
+2025-02-23 04:15:22 - INFO - ==== Self-Play iteration 9 ====
+2025-02-23 04:15:22 - INFO -   Starting self-play game 1 in iteration 9...
+2025-02-23 04:51:07 - INFO -   Finished game 1, collected 220 states in 2145.40 sec.
+2025-02-23 04:51:07 - INFO -   Starting self-play game 2 in iteration 9...
+2025-02-23 05:26:46 - INFO -   Finished game 2, collected 236 states in 2139.20 sec.
+2025-02-23 05:26:46 - INFO -   Starting self-play game 3 in iteration 9...
+2025-02-23 06:00:20 - INFO -   Finished game 3, collected 182 states in 2013.66 sec.
+2025-02-23 06:00:20 - INFO -   Starting self-play game 4 in iteration 9...
+2025-02-23 06:35:07 - INFO -   Finished game 4, collected 206 states in 2087.12 sec.
+2025-02-23 06:35:07 - INFO -   Starting self-play game 5 in iteration 9...
+2025-02-23 07:08:57 - INFO -   Finished game 5, collected 204 states in 2029.91 sec.
+2025-02-23 07:08:57 - INFO -   Starting self-play game 6 in iteration 9...
+2025-02-23 07:44:09 - INFO -   Finished game 6, collected 217 states in 2111.91 sec.
+2025-02-23 07:44:09 - INFO -   Starting self-play game 7 in iteration 9...
+2025-02-23 08:20:25 - INFO -   Finished game 7, collected 242 states in 2176.20 sec.
+2025-02-23 08:20:25 - INFO -   Starting self-play game 8 in iteration 9...
+2025-02-23 08:54:59 - INFO -   Finished game 8, collected 198 states in 2073.63 sec.
+2025-02-23 08:54:59 - INFO -   Starting self-play game 9 in iteration 9...
+2025-02-23 09:30:11 - INFO -   Finished game 9, collected 201 states in 2112.31 sec.
+2025-02-23 09:30:11 - INFO - Total new data in iteration 9: 1906 states.
+2025-02-23 09:30:11 - INFO - Training on replay buffer sample of size: 1000
+2025-02-23 09:30:11 - INFO - Epoch 1/5, Loss=4.5859
+2025-02-23 09:30:12 - INFO - Epoch 2/5, Loss=4.2601
+2025-02-23 09:30:12 - INFO - Epoch 3/5, Loss=4.0344
+2025-02-23 09:30:13 - INFO - Epoch 4/5, Loss=3.8285
+2025-02-23 09:30:13 - INFO - Epoch 5/5, Loss=3.6452
+2025-02-23 09:30:13 - INFO - Training completed in 2.21 seconds.
+2025-02-23 09:30:13 - INFO - Model saved at iteration 9.
+2025-02-23 09:30:13 - INFO - Iteration 9 duration: 18891.56 seconds.
+2025-02-23 09:30:13 - INFO - Total self-play time across all iterations: 170453.72 seconds.
