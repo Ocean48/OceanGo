@@ -517,7 +517,7 @@ def main():
     # 2) Self-play / 3) Train 
     N_ITER = 9            # number of self-play iterations
     N_GAMES_PER_ITER = 9  # how many self-play games each iteration
-    N_MCTS_SIMS = 200     # MCTS simulations
+    N_MCTS_SIMS = 500     # MCTS simulations
     TRAIN_SAMPLE_SIZE = 1000
 
     total_start_time = time.time()
