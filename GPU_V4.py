@@ -42,8 +42,8 @@ class Config:
     n_iter: int = 9           # Outer training loops per run.
                                # ↑ : linear CPU time, more data in buffer.
 
-    games_per_iter: int = 9   # Parallel self-play games each loop.
-                               # ↑ : more CPU threads busy, more RAM used
+    games_per_iter: int = 22   # Parallel self-play games each loop.
+                               # ↑ : more CPU/GPU threads busy, more RAM/VRAM used
                                #     to store new positions.
 
     # ── 3. MCTS search depth ─────────────────────────────────
@@ -60,8 +60,7 @@ class Config:
     # ── 5. SGD / GPU training parameters ─────────────────────
     train_batch: int = 256     # Mini-batch size per optimizer step.
                                # ↑ : GPU VRAM use rises ~linearly;
-                               #     gradients smoother. 8 GB RTX 3070
-                               #     tops out ≈384 (AMP on).
+                               #     gradients smoother.
 
     train_epochs: int = 5      # Passes over the sampled batch each loop.
                                # ↑ : more GPU compute time, no extra RAM.
@@ -73,9 +72,8 @@ class Config:
     amp: bool = True           # Automatic Mixed Precision on GPU.
                                # Off ➜ +VRAM, -speed.
 
-    num_workers: int = 16      # CPU processes that run self-play.
-                               # ↑ : more cores used, faster data gen;
-                               #     too high ➜ OS overhead / context-switch.
+    num_workers: int = 22       # CPU processes that run self-play. ★ NEW
+                               # ↑ : too many ➜ GPU contention.
 
 # ───────────────────────── TQDM HELPERS ─────────────────────────
 from functools import partial
@@ -83,15 +81,20 @@ from functools import partial
 tqdm_bar = partial(
     tqdm,
     dynamic_ncols=True,
-    bar_format=(
-        "{l_bar}{bar}| {n_fmt}/{total_fmt} {unit} "
-        "[{elapsed}<{remaining}, {rate_fmt}{postfix}]"
-    ),
+    bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} {unit} "
+               "[{elapsed}<{remaining}, {rate_fmt}{postfix}]",
 )
+
+# Make tqdm output from multiple processes cooperate ★ NEW
+tqdm.set_lock(mp.RLock())
 
 CFG = Config()
 SCREEN = (CFG.board_size + 1) * CFG.grid
 device_gpu = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Enable fast Tensor-Core paths on Ampere+ GPUs ★ NEW
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
 # ───────────────────────── LOGGING ─────────────────────────
 root = Path(__file__).resolve().parent
@@ -292,13 +295,13 @@ class Node:
     __slots__ = ("g", "p", "mv", "ch", "unexp", "N", "W", "Q", "P", "val")
     def __init__(self, g, parent=None, mv=None):
         self.g, self.p, self.mv = g, parent, mv
-        self.ch: Dict[Tuple[int, int],"Node"] = {}
+        self.ch: Dict[Tuple[int, int], "Node"] = {}
         self.unexp = g.get_legal_moves()
         self.N = self.W = self.Q = 0.0
         self.P = 0.0
         self.val = 0.0
 
-def select(node: Node):
+def select(node: 'Node'):
     while True:
         if node.unexp or not node.ch:
             return node
@@ -307,17 +310,25 @@ def select(node: Node):
 
 @torch.no_grad()
 def nn_eval(batch: List[Node], net: PolicyValueNet):
+    """Evaluate *many* leaves at once on the GPU for efficiency."""
+    if not batch:
+        return
     dev = next(net.parameters()).device
-    x = torch.stack([n.g.state_tensor() for n in batch]).to(dev)
-    logit, v = net(x)
-    logit, v = logit.cpu().numpy(), v.squeeze(1).cpu().numpy()
+    with torch.autocast(device_type="cuda", enabled=CFG.amp,
+                        dtype=torch.bfloat16):                         # ★ NEW BF16
+        x = torch.stack([n.g.state_tensor() for n in batch]).to(
+            dev, non_blocking=True)                                   # ★ NEW pin_mem
+        logit, v = net(x)
+    logit = logit.float().cpu().numpy()        # cast → fp32 first
+    v = v.float().squeeze(1).cpu().numpy() # same here
     for n, lvec, val in zip(batch, logit, v):
         n.val = float(val)
-        if not n.unexp: continue
+        if not n.unexp:  # no legal moves
+            continue
         idx = [m[0] * CFG.board_size + m[1] for m in n.unexp]
         pr = softmax_np(lvec[:CFG.board_size**2][idx])
         for m, p in zip(n.unexp, pr):
-            ch = Node(n.g.copy(), n, m); ch.P = p
+            ch = Node(n.g.copy(), n, m); ch.P = float(p)
             n.ch[m] = ch
         n.unexp.clear()
 
@@ -329,10 +340,27 @@ def backup(n: Node, value: float):
         value = -value
         n = n.p
 
-def mcts(game: GoGame, net: PolicyValueNet, sims=CFG.mcts_sims, temp=1.0):
-    root = Node(game.copy()); nn_eval([root], net)
+def mcts(game: GoGame, net: PolicyValueNet,
+         sims: int = CFG.mcts_sims, temp: float = 1.0,
+         batch_size: int = 64):                                      # ★ NEW
+    root = Node(game.copy())
+    nn_eval([root], net)
+
+    leaves: List[Node] = []
     for _ in range(sims):
-        leaf = select(root); nn_eval([leaf], net); backup(leaf, leaf.val)
+        leaf = select(root)
+        leaves.append(leaf)
+        if len(leaves) >= batch_size:                                # ★ NEW
+            nn_eval(leaves, net)
+            for lf in leaves:
+                backup(lf, lf.val)
+            leaves.clear()
+
+    if leaves:
+        nn_eval(leaves, net)
+        for lf in leaves:
+            backup(lf, lf.val)
+
     moves, visits = zip(*((m, ch.N) for m, ch in root.ch.items()))
     v = np.array(visits, np.float32)
     if temp < 1e-3:
@@ -342,18 +370,41 @@ def mcts(game: GoGame, net: PolicyValueNet, sims=CFG.mcts_sims, temp=1.0):
     return dict(zip(moves, p))
 
 # ==========================================================
-#               SELF-PLAY WORKER  (CPU-only)
+#              SELF-PLAY WORKER  (CPU tree, GPU NN)
 # ==========================================================
+def _strip_prefix(state_dict, prefix="_orig_mod."):
+    """Remove the torch.compile() prefix from keys, if present."""
+    if not any(k.startswith(prefix) for k in state_dict):
+        return state_dict
+    clean = {}
+    for k, v in state_dict.items():            # keep the value!
+        new_k = k[len(prefix):] if k.startswith(prefix) else k
+        clean[new_k] = v
+    return clean
+
+
+
 def self_play_worker(args):
-    seed, model_path = args
+    rank, seed, model_path = args
     torch.manual_seed(seed); random.seed(seed); np.random.seed(seed)
 
-    net = PolicyValueNet(CFG.board_size).cpu()
-    net.load_state_dict(torch.load(model_path, map_location="cpu"))
-    net.eval()
+    net = PolicyValueNet(CFG.board_size).to("cuda").eval()           # ★ NEW
+    state = torch.load(model_path, map_location="cuda")  # load file
+    state = _strip_prefix(state)                         # clean keys
+    net.load_state_dict(state)                           # fill model
+
+    show_bar = (rank == 0)  # one live moves bar only
+    if show_bar:
+        moves_bar = tqdm_bar(total=None,
+                             desc=f"Game {rank} moves",
+                             unit="move",
+                             position=1,
+                             leave=False)
 
     game, records = GoGame(CFG.board_size), []
     while not game.game_over():
+        if show_bar: moves_bar.update()
+
         pi = mcts(game, net, CFG.mcts_sims, 1.0)
         vec = np.zeros(CFG.board_size**2, np.float32)
         for mv, p in pi.items():
@@ -362,8 +413,11 @@ def self_play_worker(args):
         mv = random.choices(list(pi.keys()), weights=list(pi.values()))[0]
         game.make_move(*mv)
 
+    if show_bar: moves_bar.close()
+
     w = game.winner()
-    return [(b, p, v, 0 if w == 0 else (1 if p == w else -1)) for b, p, v in records]
+    return [(b, p, v, 0 if w == 0 else (1 if p == w else -1))
+            for b, p, v in records]
 
 # ==========================================================
 #                     REPLAY BUFFER
@@ -383,22 +437,14 @@ def planes(board, player):
 
 def batch_tensor(batch):
     bds, pl, pi, z = zip(*batch)
-    # board planes (already efficient)
     X = torch.stack([planes(b, p) for b, p in zip(bds, pl)]).to(device_gpu)
-
-    # π vectors  ➜ single NumPy array  ➜ Torch tensor
-    pi_np = np.stack(pi, axis=0).astype(np.float32)              # NEW
-    pi_t  = torch.from_numpy(pi_np).to(device_gpu)               # NEW
-
-    # z scalars  ➜ NumPy  ➜ Torch tensor
-    z_np  = np.asarray(z, dtype=np.float32)[:, None]             # NEW
-    z_t   = torch.from_numpy(z_np).to(device_gpu)                # NEW
-
-    return X, pi_t, z_t
+    pi_np = np.stack(pi, axis=0).astype(np.float32)
+    z_np  = np.asarray(z, dtype=np.float32)[:, None]
+    return X, torch.from_numpy(pi_np).to(device_gpu), torch.from_numpy(z_np).to(device_gpu)
 
 def train(net: PolicyValueNet, batch, it_idx):
     opt    = optim.Adam(net.parameters(), lr=CFG.lr)
-    scaler = torch.amp.GradScaler(device='cuda', enabled=CFG.amp)
+    scaler = torch.amp.GradScaler(device='cuda', enabled=CFG.amp)  # ★ FIX
     net.train()
 
     X, pi_t, z_t = batch_tensor(batch)
@@ -420,7 +466,8 @@ def train(net: PolicyValueNet, batch, it_idx):
             inp, tgt_pi, tgt_z = X[samp], pi_t[samp], z_t[samp]
 
             opt.zero_grad(set_to_none=True)
-            with torch.autocast(device_type="cuda", enabled=CFG.amp):
+            with torch.autocast(device_type="cuda", enabled=CFG.amp,
+                                dtype=torch.bfloat16):               # ★ NEW BF16
                 out_p, out_v = net(inp)
                 loss_p = -(tgt_pi * F.log_softmax(out_p[:, :CFG.board_size**2], 1)).sum(1).mean()
                 loss_v = F.mse_loss(out_v, tgt_z)
@@ -436,7 +483,6 @@ def train(net: PolicyValueNet, batch, it_idx):
                             vram=f"{vram:.0f} MB")
             bar.update()
 
-        # update bar description for next epoch
         if ep < CFG.train_epochs:
             bar.set_description(f"Iter {it_idx} | Epoch {ep+1}/{CFG.train_epochs}")
 
@@ -444,7 +490,6 @@ def train(net: PolicyValueNet, batch, it_idx):
     print(f"#  Training finished — avg loss {running:.4f}")
     logging.info("Iter %d | Final avg loss %.4f", it_idx, running)
     net.eval()
-
 
 # ==========================================================
 #                         GUI
@@ -500,29 +545,35 @@ def run_gui(net: PolicyValueNet):
 #                           MAIN
 # ==========================================================
 def main():
-    print("OceanGo - CUDA:", torch.cuda.is_available(), "- AMP:", CFG.amp)
+    print("OceanGo — CUDA:", torch.cuda.is_available(), "– AMP:", CFG.amp)
     torch.backends.cudnn.benchmark = True
-    net = PolicyValueNet().to(device_gpu)
 
-    save_path = "policy_value_net_B"+str(CFG.board_size)+".pth"
-    ckpt = root / save_path
+    # net = PolicyValueNet().to("cuda")               # ★ NEW always on GPU
+    # net = torch.compile(net, backend="inductor")    # ★ NEW PT-2.x JIT
+    raw_net = PolicyValueNet().to("cuda")           # ← the parameters live here
+    net      = torch.compile(raw_net, backend="inductor")  # fast wrapper
+
+    ckpt = root / f"policy_value_net_B{CFG.board_size}.pth"
     do_train = True
     if ckpt.exists():
-        state = torch.load(ckpt, map_location=device_gpu)
+        state = torch.load(ckpt, map_location="cuda")
         cur = net.state_dict(); cur.update(state); net.load_state_dict(cur, strict=False)
-        print("Found model, loaded. ")
+        print("Found model, loaded.")
         try:
             if input("Train further (T) or play GUI (G)? [T/G]: ").strip().lower() == "g":
                 do_train = False
         except EOFError:
             pass
     else:
-        print("No checkpoint - starting fresh.")
+        print("No checkpoint — starting fresh.")
 
     if not do_train:
         run_gui(net); return
 
-    tmp = root / "_tmp_cpu.pth"; torch.save(net.cpu().state_dict(), tmp); net.to(device_gpu)
+    tmp = root / "_tmp_cpu.pth"
+    torch.save(net.cpu().state_dict(), tmp)  # workers need CPU copy
+    net.to("cuda")
+
     outer = tqdm_bar(
         range(1, CFG.n_iter + 1),
         desc="Meta-loop",
@@ -532,18 +583,18 @@ def main():
     )
 
     for it in outer:
-        seeds = [random.randrange(2**32) for _ in range(CFG.games_per_iter)]
+        seeds = [(rank, random.randrange(2**32))
+                 for rank in range(CFG.games_per_iter)]
         with mp.Pool(CFG.num_workers) as pool:
             print(f"\n->  Iteration {it}/{CFG.n_iter} — self-play")
-            bar = tqdm_bar(
-                total=CFG.games_per_iter,
-                unit="game",
-                desc="Self-play",
-                position=0,
-                leave=False,
-            )
+            bar = tqdm_bar(total=CFG.games_per_iter,
+                           desc="Self-play",
+                           unit="game",
+                           position=0,
+                           leave=False)
             moves_total, t0 = 0, time.time()
-            for rec in pool.imap_unordered(self_play_worker, [(s, tmp.as_posix()) for s in seeds]):
+            for rec in pool.imap_unordered(self_play_worker,
+                                           [(r, s, tmp.as_posix()) for r, s in seeds]):
                 RB.add(rec); bar.update()
                 moves_total += len(rec)
                 bar.set_postfix_str(
@@ -552,10 +603,12 @@ def main():
                     f"mps={moves_total/(time.time()-t0):.1f}"
                 )
             bar.close()
+
         train(net, RB.sample(1024), it)
-        torch.save(net.state_dict(), ckpt)
-        torch.save(net.cpu().state_dict(), tmp)
-        net.to(device_gpu)
+        torch.save(net.state_dict(), ckpt)            # GPU weights
+        torch.save(net.cpu().state_dict(), tmp)       # worker copy
+        net.to("cuda")
+
         if psutil:
             mem_gb = psutil.virtual_memory().used / 2**30
             outer.set_postfix_str(f"buffer={len(RB.data):,}  RAM={mem_gb:.1f} GB")

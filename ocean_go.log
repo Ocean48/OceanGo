@@ -1,508 +1,940 @@
-2025-05-27 12:26:01 — INFO — 
+2025-05-28 17:11:49 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:26:02 — INFO — 
+2025-05-28 17:11:49 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=12)
+2025-05-28 17:11:50 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:07 — INFO — 
+2025-05-28 17:11:50 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=12)
+2025-05-28 17:11:51 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:11:51 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=12)
+2025-05-28 17:11:51 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:11:51 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=12)
+2025-05-28 17:11:51 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:11:51 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=12)
+2025-05-28 17:11:51 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:11:51 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=12)
+2025-05-28 17:11:51 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:11:51 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=12)
+2025-05-28 17:11:51 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:11:51 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=12)
+2025-05-28 17:11:51 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:11:51 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=12)
+2025-05-28 17:11:51 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:11:51 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=12)
+2025-05-28 17:11:51 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:11:51 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=12)
+2025-05-28 17:11:51 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:11:51 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=12)
+2025-05-28 17:11:51 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:11:51 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=12)
+2025-05-28 17:13:06 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:13:06 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:27:09 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:39 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:40 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:40 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-28 17:13:07 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:40 — INFO — 
+2025-05-28 17:13:07 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=10000, replay_cap=10000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=16)
+2025-05-29 11:36:09 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:40 — INFO — 
+2025-05-29 11:36:09 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-29 12:15:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:40 — INFO — 
+2025-05-29 12:15:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-29 12:15:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:40 — INFO — 
+2025-05-29 12:15:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-29 12:15:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:40 — INFO — 
+2025-05-29 12:15:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-29 12:15:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:40 — INFO — 
+2025-05-29 12:15:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-29 12:15:37 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:40 — INFO — 
+2025-05-29 12:15:37 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:48:04 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:40 — INFO — 
+2025-05-30 10:48:04 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:48:06 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:40 — INFO — 
+2025-05-30 10:48:06 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:48:06 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:40 — INFO — 
+2025-05-30 10:48:06 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:48:06 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:41 — INFO — 
+2025-05-30 10:48:06 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:48:06 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:41 — INFO — 
+2025-05-30 10:48:06 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:54:08 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:41 — INFO — 
+2025-05-30 10:54:08 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:54:10 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:41 — INFO — 
+2025-05-30 10:54:10 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:54:10 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:41 — INFO — 
+2025-05-30 10:54:10 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:54:10 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:41 — INFO — 
+2025-05-30 10:54:10 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:54:10 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:41 — INFO — 
+2025-05-30 10:54:10 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:55:17 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:41 — INFO — 
+2025-05-30 10:55:17 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:55:19 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:41 — INFO — 
+2025-05-30 10:55:19 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:55:19 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:41 — INFO — 
+2025-05-30 10:55:19 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:55:19 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:41 — INFO — 
+2025-05-30 10:55:19 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 10:55:19 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:30:41 — INFO — 
+2025-05-30 10:55:19 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:06:37 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:32 — INFO — 
+2025-05-30 11:06:37 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:06:40 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:33 — INFO — 
+2025-05-30 11:06:40 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:06:40 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:33 — INFO — 
+2025-05-30 11:06:40 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:06:40 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:33 — INFO — 
+2025-05-30 11:06:40 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:06:40 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:33 — INFO — 
+2025-05-30 11:06:40 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:30:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:33 — INFO — 
+2025-05-30 11:30:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:30:29 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:33 — INFO — 
+2025-05-30 11:30:29 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:30:29 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:33 — INFO — 
+2025-05-30 11:30:29 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:30:29 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:33 — INFO — 
+2025-05-30 11:30:29 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:30:29 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:33 — INFO — 
+2025-05-30 11:30:29 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:34:17 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:33 — INFO — 
+2025-05-30 11:34:17 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:34:20 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:33 — INFO — 
+2025-05-30 11:34:20 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:34:20 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:33 — INFO — 
+2025-05-30 11:34:20 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:34:20 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:57 — INFO — 
+2025-05-30 11:34:20 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:34:20 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:58 — INFO — 
+2025-05-30 11:34:20 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=4)
+2025-05-30 11:35:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:58 — INFO — 
+2025-05-30 11:35:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:58 — INFO — 
+2025-05-30 11:35:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:58 — INFO — 
+2025-05-30 11:35:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:58 — INFO — 
+2025-05-30 11:35:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:58 — INFO — 
+2025-05-30 11:35:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:58 — INFO — 
+2025-05-30 11:35:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:58 — INFO — 
+2025-05-30 11:35:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:58 — INFO — 
+2025-05-30 11:35:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:59 — INFO — 
+2025-05-30 11:35:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:31:59 — INFO — 
+2025-05-30 11:35:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:40:38 — INFO — 
+2025-05-30 11:35:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:40:39 — INFO — 
+2025-05-30 11:35:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:36 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:40:39 — INFO — 
+2025-05-30 11:35:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:37 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:40:39 — INFO — 
+2025-05-30 11:35:37 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:35:37 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:40:39 — INFO — 
+2025-05-30 11:35:37 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=14)
+2025-05-30 11:36:31 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:41:08 — INFO — Iter 1 | Epoch 1 | loss 5.3833
-2025-05-27 12:41:08 — INFO — Iter 1 | Epoch 2 | loss 5.3162
-2025-05-27 12:42:09 — INFO — 
+2025-05-30 11:36:31 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:42:10 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:42:10 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:42:10 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:42:10 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:42:36 — INFO — Iter 1 | Epoch 1 | loss 5.3415
-2025-05-27 12:42:36 — INFO — Iter 1 | Epoch 2 | loss 5.3278
-2025-05-27 12:42:45 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:42:46 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:42:46 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:42:46 — INFO — 
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:42:46 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:51:58 — INFO — Iter 1 | Epoch 1 | loss 5.3805
-2025-05-27 12:51:58 — INFO — Iter 1 | Epoch 2 | loss 5.1397
-2025-05-27 12:51:59 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:51:59 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:51:59 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 12:51:59 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 14:29:14 — INFO — Iter 2 | Epoch 1 | loss 5.3499
-2025-05-27 14:29:14 — INFO — Iter 2 | Epoch 2 | loss 5.3078
-2025-05-27 14:29:15 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 14:29:15 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 14:29:15 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 14:29:15 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 15:58:28 — INFO — Iter 3 | Epoch 1 | loss 5.3067
-2025-05-27 15:58:28 — INFO — Iter 3 | Epoch 2 | loss 5.1961
-2025-05-27 15:58:29 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 15:58:29 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 15:58:29 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 15:58:29 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 17:25:09 — INFO — Iter 4 | Epoch 1 | loss 5.1590
-2025-05-27 17:25:09 — INFO — Iter 4 | Epoch 2 | loss 5.0413
-2025-05-27 17:25:10 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 17:25:10 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 11:36:34 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 17:25:10 — INFO — 
+2025-05-30 11:36:34 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:24 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 17:25:10 — INFO — 
+2025-05-30 15:37:24 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:26 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 18:57:41 — INFO — Iter 5 | Epoch 1 | loss 5.0539
-2025-05-27 18:57:41 — INFO — Iter 5 | Epoch 2 | loss 4.9374
-2025-05-27 18:57:42 — INFO — 
+2025-05-30 15:37:26 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 18:57:42 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 18:57:42 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 18:57:42 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 20:27:58 — INFO — Iter 6 | Epoch 1 | loss 4.8801
-2025-05-27 20:27:58 — INFO — Iter 6 | Epoch 2 | loss 4.7680
-2025-05-27 20:27:59 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 20:27:59 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 20:27:59 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 20:27:59 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 22:00:00 — INFO — Iter 7 | Epoch 1 | loss 4.7468
-2025-05-27 22:00:00 — INFO — Iter 7 | Epoch 2 | loss 4.1015
-2025-05-27 22:00:01 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 22:00:01 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 22:00:01 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 22:00:01 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 23:30:44 — INFO — Iter 8 | Epoch 1 | loss 4.2992
-2025-05-27 23:30:44 — INFO — Iter 8 | Epoch 2 | loss 4.0191
-2025-05-27 23:30:45 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 23:30:45 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 23:30:45 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-27 23:30:45 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 01:01:50 — INFO — Iter 9 | Epoch 1 | loss 4.5340
-2025-05-28 01:01:50 — INFO — Iter 9 | Epoch 2 | loss 4.1800
-2025-05-28 10:00:56 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:00:58 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:00:58 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:00:58 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:00:58 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:00:58 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:00:58 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:27 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:00:58 — INFO — 
+2025-05-30 15:37:27 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=24)
+2025-05-30 15:37:57 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:00:58 — INFO — 
+2025-05-30 15:37:57 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:00 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:00:58 — INFO — 
+2025-05-30 15:38:00 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:00:58 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:00:58 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:00:58 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:08 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:09 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:09 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:09 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:09 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:09 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:09 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:01 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:01 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:02 — INFO — 
 
 ───────── New session ─────────
-2025-05-28 10:13:10 — INFO — 
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
 
 ───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=48)
+2025-05-30 15:38:26 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:26 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=10)
+2025-05-30 15:38:28 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:28 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=10)
+2025-05-30 15:38:28 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:28 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=10)
+2025-05-30 15:38:28 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:28 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=10)
+2025-05-30 15:38:28 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:28 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=10)
+2025-05-30 15:38:28 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:28 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=10)
+2025-05-30 15:38:28 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:28 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=10)
+2025-05-30 15:38:28 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:28 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=10)
+2025-05-30 15:38:28 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:28 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=10)
+2025-05-30 15:38:28 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:28 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=10)
+2025-05-30 15:38:28 — INFO — 
+
+───────── New session ─────────
+2025-05-30 15:38:28 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=9, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=10)
+2025-05-30 16:37:02 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:02 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:37:05 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:37:05 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=20, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=20)
+2025-05-30 16:38:36 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:36 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:39 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:39 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:40 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:40 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:40 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:40 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:40 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:40 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:40 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:40 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
+2025-05-30 16:38:40 — INFO — 
+
+───────── New session ─────────
+2025-05-30 16:38:40 — INFO — Config: Config(board_size=9, grid=50, n_iter=9, games_per_iter=22, mcts_sims=5000, replay_cap=1000000, train_batch=256, train_epochs=5, lr=0.0001, amp=True, num_workers=22)
