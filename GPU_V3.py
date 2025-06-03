@@ -3,7 +3,12 @@
 # Features: progress bars, AMP, simple-Ko, suicide ban, GUI.
 # --------------------------------------------------------------------------
 import time
-import os, random, math, logging, warnings, multiprocessing as mp
+import multiprocessing as mp
+import os
+import random
+import math
+import logging
+import warnings
 from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Tuple, Dict
@@ -47,12 +52,12 @@ class Config:
                                #     to store new positions.
 
     # ── 3. MCTS search depth ─────────────────────────────────
-    mcts_sims: int = 5000      # Simulations per move in MCTS.
+    mcts_sims: int = 5_000      # Simulations per move in MCTS.
                                # ↑ : CPU time per move rises linearly;
                                #     search stronger, GUI latency higher.
 
     # ── 4. Replay buffer (lives in **system RAM**) ────────────
-    replay_cap: int = 1_000_000   # Maximum positions kept.
+    replay_cap: int = 100_000   # Maximum positions kept.
                                    # Each 9×9 record ≈0.5 KB ➜ 10 M ≈ 5 GB.
                                    # ↑ : needs more RAM, gives better
                                    #     training diversity.
@@ -504,8 +509,9 @@ def main():
     torch.backends.cudnn.benchmark = True
     net = PolicyValueNet().to(device_gpu)
 
-    save_path = "policy_value_net_B"+str(CFG.board_size)+".pth"
-    ckpt = root / save_path
+    # Add CFG info in file name for checkpoint
+    cfg_info = f"B{CFG.board_size}_N{CFG.n_iter}_GPI{CFG.games_per_iter}_MS{CFG.mcts_sims}_RC{CFG.replay_cap}_TB{CFG.train_batch}_TE{CFG.train_epochs}_LR{CFG.lr:.0e}"
+    ckpt = root / f"policy_value_net_{cfg_info}.pth"
     do_train = True
     if ckpt.exists():
         state = torch.load(ckpt, map_location=device_gpu)

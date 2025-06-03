@@ -2,8 +2,17 @@
 # OceanGo - 9×9 (default) Go with GPU training & CPU self-play
 # Features: progress bars, AMP, simple-Ko, suicide ban, GUI.
 # --------------------------------------------------------------------------
+import datetime
+import platform
 import time
-import os, random, math, logging, warnings, multiprocessing as mp
+import os
+import random
+import math
+import warnings
+import multiprocessing 
+import subprocess
+import logging
+import logging.handlers
 from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Tuple, Dict
@@ -36,24 +45,23 @@ class Config:
                                # Resource  → CPU-time, GPU-VRAM.
 
     grid: int = 50             # Pixel width of one cell in the GUI.
-                               # Only affects rendering – no perf impact.
+                               # Only affects rendering - no perf impact.
 
     # ── 2. Self-play schedule (how much data you generate) ────
     n_iter: int = 9           # Outer training loops per run.
                                # ↑ : linear CPU time, more data in buffer.
 
-    games_per_iter: int = 22   # Parallel self-play games each loop.
+    games_per_iter: int = 23   # Parallel self-play games each loop.
                                # ↑ : more CPU/GPU threads busy, more RAM/VRAM used
                                #     to store new positions.
 
     # ── 3. MCTS search depth ─────────────────────────────────
-    mcts_sims: int = 5000      # Simulations per move in MCTS.
+    mcts_sims: int = 5_000      # Simulations per move in MCTS.
                                # ↑ : CPU time per move rises linearly;
                                #     search stronger, GUI latency higher.
 
     # ── 4. Replay buffer (lives in **system RAM**) ────────────
-    replay_cap: int = 1_000_000   # Maximum positions kept.
-                                   # Each 9×9 record ≈0.5 KB ➜ 10 M ≈ 5 GB.
+    replay_cap: int = 10_000   # Maximum positions kept.
                                    # ↑ : needs more RAM, gives better
                                    #     training diversity.
 
@@ -72,7 +80,7 @@ class Config:
     amp: bool = True           # Automatic Mixed Precision on GPU.
                                # Off ➜ +VRAM, -speed.
 
-    num_workers: int = 22       # CPU processes that run self-play. ★ NEW
+    num_workers: int = 23       # CPU processes that run self-play. 
                                # ↑ : too many ➜ GPU contention.
 
 # ───────────────────────── TQDM HELPERS ─────────────────────────
@@ -86,26 +94,90 @@ tqdm_bar = partial(
 )
 
 # Make tqdm output from multiple processes cooperate ★ NEW
-tqdm.set_lock(mp.RLock())
+tqdm.set_lock(multiprocessing.RLock())
 
 CFG = Config()
 SCREEN = (CFG.board_size + 1) * CFG.grid
+HEADER_WRITTEN = False   
 device_gpu = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Enable fast Tensor-Core paths on Ampere+ GPUs ★ NEW
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
+root  = Path(__file__).resolve().parent
 # ───────────────────────── LOGGING ─────────────────────────
-root = Path(__file__).resolve().parent
-logging.basicConfig(
-    filename=root / "ocean_go.log",
-    level=logging.INFO,
-    format="%(asctime)s — %(levelname)s — %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logging.info("\n\n───────── New session ─────────")
-logging.info("Config: %s", CFG)
+def init_logger():
+    fmt   = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
+    datef = "%Y-%m-%d %H:%M:%S"
+    logf  = root / "ocean_go.log"
+
+    # Rotate at 10 MB, keep 5 archives  ocean_go.log.1 … .5
+    handler = logging.handlers.RotatingFileHandler(
+        logf, maxBytes=10*2**20, backupCount=5, encoding="utf-8"
+    )
+    handler.setFormatter(logging.Formatter(fmt, datef))
+
+    logging.basicConfig(
+        level=logging.INFO, handlers=[handler], force=True
+    )
+
+    logging.getLogger("torch").setLevel(logging.WARNING)   # silence spam
+    return logging.getLogger("OceanGo")
+
+LOGGER = init_logger()
+
+
+def log_super_header():
+    global HEADER_WRITTEN
+    if HEADER_WRITTEN:          # already done in this interpreter
+        return
+    if multiprocessing.current_process().name != "MainProcess":
+        return                  # child process → skip
+
+    HEADER_WRITTEN = True       # flip the switch
+
+    header = {
+        "session_id":  os.urandom(4).hex(),
+        "script"    :  os.path.basename(__file__),
+        "git_rev"   :  subprocess.run(
+                          ["git", "rev-parse", "--short", "HEAD"],
+                          text=True, stdout=subprocess.PIPE,
+                          stderr=subprocess.DEVNULL).stdout.strip() or "N/A",
+        "started_at":  datetime.datetime.now()
+                           .isoformat(timespec="seconds"),
+        "python"    :  platform.python_version(),
+    }
+    for k, v in header.items():
+        LOGGER.info("%-11s : %s", k, v)
+
+# run immediately once in the main interpreter
+log_super_header()
+
+def log_session_header():
+    import torch, platform, subprocess, uuid, datetime, socket, psutil
+    header = {
+        "session_id" : uuid.uuid4().hex[:8],
+        "script"     : Path(__file__).name,
+        "git_rev"    : subprocess.run(
+            ["git","rev-parse","--short","HEAD"], text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+        ).stdout.strip() or "N/A",
+        "started_at" : datetime.datetime.now().isoformat(timespec="seconds"),
+        "host"       : socket.gethostname(),
+        "cuda"       : torch.version.cuda,
+        "gpu"        : torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU",
+        "torch"      : torch.__version__,
+        "python"     : platform.python_version(),
+        "ram_total"  : f"{psutil.virtual_memory().total/2**30:.1f} GB",
+        "config"     : vars(CFG),
+    }
+    for k, v in header.items():
+        LOGGER.info("%-11s : %s", k, v)
+
+    LOGGER.info("") 
+
+log_session_header()
 
 # ==========================================================
 #                   POLICY-VALUE NETWORK
@@ -400,6 +472,7 @@ def self_play_worker(args):
                              unit="move",
                              position=1,
                              leave=False)
+    LOGGER.debug("Worker %d  spawned (PID=%d, seed=%d)", rank, os.getpid(), seed)
 
     game, records = GoGame(CFG.board_size), []
     while not game.game_over():
@@ -416,6 +489,8 @@ def self_play_worker(args):
     if show_bar: moves_bar.close()
 
     w = game.winner()
+    LOGGER.info("Worker %d finished: moves=%d, winner=%s",
+            rank, len(records), {0:"Draw",1:"Black",2:"White"}[game.winner()])
     return [(b, p, v, 0 if w == 0 else (1 if p == w else -1))
             for b, p, v in records]
 
@@ -443,12 +518,17 @@ def batch_tensor(batch):
     return X, torch.from_numpy(pi_np).to(device_gpu), torch.from_numpy(z_np).to(device_gpu)
 
 def train(net: PolicyValueNet, batch, it_idx):
+    LOGGER.info(                        # ①  session-level headline
+        "Iter %d | start training | batch=%d, epochs=%d, lr=%.1e",
+        it_idx, len(batch), CFG.train_epochs, CFG.lr,
+    )
     opt    = optim.Adam(net.parameters(), lr=CFG.lr)
     scaler = torch.amp.GradScaler(device='cuda', enabled=CFG.amp)  # ★ FIX
     net.train()
 
     X, pi_t, z_t = batch_tensor(batch)
     steps_per_ep = math.ceil(len(batch) / CFG.train_batch)
+    total_steps  = CFG.train_epochs * steps_per_ep
 
     bar = tqdm_bar(
         total=CFG.train_epochs * steps_per_ep,
@@ -478,6 +558,12 @@ def train(net: PolicyValueNet, batch, it_idx):
             step_global += 1
             running += (loss.item() - running) / step_global
             vram = torch.cuda.memory_allocated() / 2**20
+            if step_global == 1 or step_global % 50 == 0:
+                LOGGER.debug(              # ②  per-50-steps detail
+                    "Iter %d | Ep %d | step %4d/%d | loss=%.4f (avg=%.4f)",
+                    it_idx, ep, step_global, total_steps, loss.item(), running,
+                    extra={"vram": torch.cuda.memory_allocated() // 2**20},
+                )
             bar.set_postfix(loss=f"{loss.item():.4f}",
                             avg=f"{running:.4f}",
                             vram=f"{vram:.0f} MB")
@@ -485,6 +571,8 @@ def train(net: PolicyValueNet, batch, it_idx):
 
         if ep < CFG.train_epochs:
             bar.set_description(f"Iter {it_idx} | Epoch {ep+1}/{CFG.train_epochs}")
+
+    LOGGER.info("Iter %d finished - avg_loss=%.4f (batch=%d)",  it_idx, running, len(batch))
 
     bar.close()
     print(f"#  Training finished — avg loss {running:.4f}")
@@ -545,7 +633,7 @@ def run_gui(net: PolicyValueNet):
 #                           MAIN
 # ==========================================================
 def main():
-    print("OceanGo — CUDA:", torch.cuda.is_available(), "– AMP:", CFG.amp)
+    print("OceanGo — CUDA:", torch.cuda.is_available(), "- AMP:", CFG.amp)
     torch.backends.cudnn.benchmark = True
 
     # net = PolicyValueNet().to("cuda")               # ★ NEW always on GPU
@@ -553,7 +641,10 @@ def main():
     raw_net = PolicyValueNet().to("cuda")           # ← the parameters live here
     net      = torch.compile(raw_net, backend="inductor")  # fast wrapper
 
-    ckpt = root / f"policy_value_net_B{CFG.board_size}.pth"
+    # Add CFG info in file name for checkpoint
+    cfg_info = f"B{CFG.board_size}_N{CFG.n_iter}_GPI{CFG.games_per_iter}_MS{CFG.mcts_sims}_RC{CFG.replay_cap}_TB{CFG.train_batch}_TE{CFG.train_epochs}_LR{CFG.lr:.0e}"
+    ckpt = root / f"policy_value_net_{cfg_info}.pth"
+    print("Checkpoint:", ckpt)
     do_train = True
     if ckpt.exists():
         state = torch.load(ckpt, map_location="cuda")
@@ -585,7 +676,7 @@ def main():
     for it in outer:
         seeds = [(rank, random.randrange(2**32))
                  for rank in range(CFG.games_per_iter)]
-        with mp.Pool(CFG.num_workers) as pool:
+        with multiprocessing.Pool(CFG.num_workers) as pool:
             print(f"\n->  Iteration {it}/{CFG.n_iter} — self-play")
             bar = tqdm_bar(total=CFG.games_per_iter,
                            desc="Self-play",
@@ -604,6 +695,12 @@ def main():
                 )
             bar.close()
 
+        LOGGER.info(
+            "Iter %d summary: games=%d  moves=%d  buffer=%d  wall=%.1fs",
+            it, CFG.games_per_iter, moves_total, len(RB.data),
+            time.time() - t0,
+        )
+
         train(net, RB.sample(1024), it)
         torch.save(net.state_dict(), ckpt)            # GPU weights
         torch.save(net.cpu().state_dict(), tmp)       # worker copy
@@ -620,5 +717,5 @@ def main():
 
 # ───────────────────────── entry ─────────────────────────
 if __name__ == "__main__":
-    mp.set_start_method("spawn", force=True)
+    multiprocessing.set_start_method("spawn", force=True)
     main()
