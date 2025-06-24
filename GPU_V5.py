@@ -48,24 +48,24 @@ class Config:
                                # Only affects rendering - no perf impact.
 
     # ── 2. Self-play schedule (how much data you generate) ────
-    n_iter: int = 9           # Outer training loops per run.
-    games_per_iter: int = 23  # Parallel self-play games each loop.
+    n_iter: int = 60           # Outer training loops per run.
+    games_per_iter: int = 40  # Parallel self-play games each loop.
 
     # ── 3. MCTS search depth ─────────────────────────────────
     mcts_sims: int = 5_000                # Used in GUI & training
     mcts_sims_worker: int = 1_200         # ★ NEW lighter CPU self-play
 
     # ── 4. Replay buffer (lives in **system RAM**) ────────────
-    replay_cap: int = 10_000   # Maximum positions kept.
+    replay_cap: int = 40_000   # Maximum positions kept.
 
     # ── 5. SGD / GPU training parameters ─────────────────────
-    train_batch: int = 256
+    train_batch: int = 512
     train_epochs: int = 5
-    lr: float = 1e-4
+    lr: float = 1e-3
 
     # ── 6. Hardware toggles ───────────────────────────────────
     amp: bool = True           # Automatic Mixed Precision on GPU.
-    num_workers: int = 23      # CPU processes that run self-play.
+    num_workers: int = 12      # CPU processes that run self-play.
 
     # ── 7. Robustness knobs (watch-dog & move cap) ────────────
     max_moves: Optional[int] = None              # Per-game hard cap; None → unlimited.
@@ -176,29 +176,46 @@ log_session_header()
 # ==========================================================
 #                   POLICY-VALUE NETWORK
 # ==========================================================
-class PolicyValueNet(nn.Module):
-    def __init__(self, bs: int = CFG.board_size):
+# ───────────────────── NN building blocks ────────────────────
+class ResBlock(nn.Module):
+    def __init__(self, ch=128):
         super().__init__()
-        self.bs = bs
-        self.conv1 = nn.Conv2d(2, 32, 3, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
-        self.conv3 = nn.Conv2d(64, 64, 3, padding=1)
-        # policy head
-        self.p_conv = nn.Conv2d(64, 2, 1)
-        self.p_fc = nn.Linear(2 * bs * bs, bs * bs + 1)
-        # value head
-        self.v_conv = nn.Conv2d(64, 1, 1)
-        self.v_fc1 = nn.Linear(bs * bs, 128)
-        self.v_fc2 = nn.Linear(128, 1)
+        self.conv1 = nn.Conv2d(ch, ch, 3, padding=1, bias=False)
+        self.bn1   = nn.BatchNorm2d(ch)
+        self.conv2 = nn.Conv2d(ch, ch, 3, padding=1, bias=False)
+        self.bn2   = nn.BatchNorm2d(ch)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
+        y = F.relu(self.bn1(self.conv1(x)))
+        y = self.bn2(self.conv2(y))
+        return F.relu(x + y)
+
+# ───────────────────── Policy–value network ──────────────────
+class PolicyValueNet(nn.Module):
+    def __init__(self, bs: int = CFG.board_size, ch: int = 128, blocks: int = 6):
+        super().__init__()
+        self.bs = bs
+        self.entry = nn.Sequential(
+            nn.Conv2d(2, ch, 3, padding=1, bias=False),
+            nn.BatchNorm2d(ch), nn.ReLU(inplace=True)
+        )
+        self.torso = nn.Sequential(*(ResBlock(ch) for _ in range(blocks)))
+
+        # policy head
+        self.p_conv = nn.Conv2d(ch, 2, 1)
+        self.p_fc   = nn.Linear(2 * bs * bs, bs * bs + 1)
+
+        # value head
+        self.v_conv = nn.Conv2d(ch, 1, 1)
+        self.v_fc1  = nn.Linear(bs * bs, 256)
+        self.v_fc2  = nn.Linear(256, 1)
+
+    def forward(self, x):
+        x = self.torso(self.entry(x))
         p = F.relu(self.p_conv(x))
-        p = self.p_fc(p.view(p.size(0), -1))
+        p = self.p_fc(p.flatten(1))
         v = F.relu(self.v_conv(x))
-        v = F.relu(self.v_fc1(v.view(v.size(0), -1)))
+        v = F.relu(self.v_fc1(v.flatten(1)))
         v = torch.tanh(self.v_fc2(v))
         return p, v
 
@@ -379,10 +396,9 @@ def nn_eval(batch: List[Node], net: PolicyValueNet):
     """Evaluate *many* leaves at once on the GPU (or CPU)."""
     if not batch:
         return
-    dev = next(net.parameters()).device
-    cast_dev = "cuda" if dev.type == "cuda" else "cpu"                 # ★ NEW
-    with torch.autocast(device_type=cast_dev,
-                        enabled=(CFG.amp and dev.type=="cuda"),
+    dev = next(net.parameters()).device          # will now be cuda:0
+    with torch.autocast(device_type=dev.type,
+                        enabled=(CFG.amp and dev.type == "cuda"),
                         dtype=torch.bfloat16):
         x = torch.stack([n.g.state_tensor() for n in batch]).to(dev, non_blocking=True)
         logit, v = net(x)
@@ -408,7 +424,7 @@ def backup(n: Node, value: float):
 
 def mcts(game: GoGame, net: PolicyValueNet,
          sims: int = CFG.mcts_sims, temp: float = 1.0,
-         batch_size: int = 64):                                      # ★ NEW
+         batch_size: int = 128):
     root = Node(game.copy())
     nn_eval([root], net)
 
@@ -452,8 +468,7 @@ def self_play_worker(args):
     rank, seed, model_path = args
     torch.manual_seed(seed); random.seed(seed); np.random.seed(seed)
 
-    # Use CPU in the workers → no GPU contention ★ NEW
-    net = PolicyValueNet(CFG.board_size).eval()
+    net = PolicyValueNet(CFG.board_size).eval().to("cuda", non_blocking=True)
     state = torch.load(model_path, map_location="cpu")
     state = _strip_prefix(state)
     net.load_state_dict(state)
@@ -639,13 +654,18 @@ def main():
     print("OceanGo — CUDA:", torch.cuda.is_available(), "- AMP:", CFG.amp)
     torch.backends.cudnn.benchmark = True
 
-    # net = PolicyValueNet().to("cuda")               # ★ NEW always on GPU
-    # net = torch.compile(net, backend="inductor")    # ★ NEW PT-2.x JIT
     raw_net = PolicyValueNet().to("cuda")           # ← the parameters live here
     net      = torch.compile(raw_net, backend="inductor")  # fast wrapper
+    print("Raw net device :", next(raw_net.parameters()).device)
+    print("Comp net device:", next(net.parameters()).device)
+    print("------- start self-play -------")
+
 
     # Add CFG info in file name for checkpoint
-    cfg_info = f"B{CFG.board_size}_N{CFG.n_iter}_GPI{CFG.games_per_iter}_MS{CFG.mcts_sims}_RC{CFG.replay_cap}_TB{CFG.train_batch}_TE{CFG.train_epochs}_LR{CFG.lr:.0e}"
+    cfg_info = (f"R6_B{CFG.board_size}_N{CFG.n_iter}"
+            f"_GPI{CFG.games_per_iter}_MS{CFG.mcts_sims}"
+            f"_RC{CFG.replay_cap}_TB{CFG.train_batch}"
+            f"_TE{CFG.train_epochs}_LR{CFG.lr:.0e}")
     ckpt = root / f"policy_value_net_{cfg_info}.pth"
     print("Checkpoint:", ckpt)
     do_train = True
