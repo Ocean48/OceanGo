@@ -61,7 +61,7 @@ class Config:
     # ── 5. SGD / GPU training parameters ─────────────────────
     train_batch: int = 512
     train_epochs: int = 5
-    lr: float = 1e-3
+    lr: float = 1e-4
 
     # ── 6. Hardware toggles ───────────────────────────────────
     amp: bool = True           # Automatic Mixed Precision on GPU.
@@ -190,7 +190,7 @@ class ResBlock(nn.Module):
         y = self.bn2(self.conv2(y))
         return F.relu(x + y)
 
-# ───────────────────── Policy–value network ──────────────────
+# ───────────────────── Policy-value network ──────────────────
 class PolicyValueNet(nn.Module):
     def __init__(self, bs: int = CFG.board_size, ch: int = 128, blocks: int = 6):
         super().__init__()
@@ -225,6 +225,61 @@ class PolicyValueNet(nn.Module):
 def softmax_np(x):
     e = np.exp(x - x.max())
     return e / e.sum()
+
+def _chinese_area(board: np.ndarray, komi: float = 6.5) -> float:
+    """Return (black_area - white_area) with komi already subtracted.
+    Positive → black is ahead, negative → white is ahead."""
+    bs = board.shape[0]
+    seen = set()
+    area_black = area_white = 0
+
+    for x in range(bs):
+        for y in range(bs):
+            if (x, y) in seen:                 # already visited
+                continue
+
+            c = board[x, y]
+            if c in (1, 2):                    # occupied
+                if c == 1:
+                    area_black += 1
+                else:
+                    area_white += 1
+                continue
+
+            # flood-fill an empty region
+            queue = [(x, y)]
+            empties = []
+            border_colors = set()
+            while queue:
+                cx, cy = queue.pop()
+                if (cx, cy) in seen:
+                    continue
+                seen.add((cx, cy))
+                empties.append((cx, cy))
+                for dx, dy in ((1,0),(-1,0),(0,1),(0,-1)):
+                    nx, ny = cx + dx, cy + dy
+                    if 0 <= nx < bs and 0 <= ny < bs:
+                        col = board[nx, ny]
+                        if col == 0:
+                            queue.append((nx, ny))
+                        else:
+                            border_colors.add(col)
+
+            if len(border_colors) == 1:        # territory
+                if 1 in border_colors:
+                    area_black += len(empties)
+                else:
+                    area_white += len(empties)
+            # else: dame — nobody gets the points
+
+    return area_black - (area_white + komi)
+
+
+# ==========================================================
+#  PASS move helper
+# ==========================================================
+PASS = (-1, -1)         # one extra action after the board cells
+
 
 class GoGame:
     def __init__(self, bs: int = CFG.board_size):
@@ -309,6 +364,11 @@ class GoGame:
 
     # -------------- move with simple-Ko check ----------
     def make_move(self, x, y):
+        if (x, y) == PASS:           # pass → just toggle the player
+            self.history.append(self.board.copy())
+            self.switch()
+            return True
+
         if not self.is_valid(x, y): return False
         if self.ko_point == (x, y): return False
 
@@ -337,6 +397,12 @@ class GoGame:
         self.history.append(prev_board)       # keep last state
         self.switch()
         return True
+    
+    def _last_two_passed(self):
+        return (
+            len(self.history) >= 2
+            and np.array_equal(self.history[-1], self.history[-2])
+        )
 
     # ---------- convenience for GUI / debug ------------
     def group_stats(self, x, y):
@@ -354,17 +420,22 @@ class GoGame:
 
     # ---------- external interface ----------
     def get_legal_moves(self):
-        return [(x, y) for x in range(self.bs) for y in range(self.bs)
-                if self.board[x, y] == 0 and not self.is_suicide(x, y)
+        moves = [(x, y) for x in range(self.bs) for y in range(self.bs)
+                if self.board[x, y] == 0
+                and not self.is_suicide(x, y)
                 and (x, y) != self.ko_point]
+        moves.append(PASS)        # <- brand-new line
+        return moves
 
     def game_over(self):
-        return not self.get_legal_moves()
+        return self._last_two_passed()
 
-    def winner(self):
-        s1 = np.count_nonzero(self.board == 1)
-        s2 = np.count_nonzero(self.board == 2)
-        return 0 if s1 == s2 else (1 if s1 > s2 else 2)
+    def winner(self, komi: float = 6.5):
+        score = _chinese_area(self.board, komi)
+        if abs(score) < 1e-3:
+            return 0                 # draw
+        return 1 if score > 0 else 2
+
 
     def state_tensor(self):
         p, o = self.current_player, 3 - self.current_player
@@ -407,9 +478,17 @@ def nn_eval(batch: List[Node], net: PolicyValueNet):
     for n, lvec, val in zip(batch, logit, v):
         n.val = float(val)
         if not n.unexp: continue
-        idx = [m[0] * CFG.board_size + m[1] for m in n.unexp]
-        pr = softmax_np(lvec[:CFG.board_size**2][idx])
-        for m, p in zip(n.unexp, pr):
+        idx = []
+        for m in n.unexp:
+            if m == PASS:
+                idx.append(CFG.board_size ** 2)   # last slot
+            else:
+                idx.append(m[0] * CFG.board_size + m[1])
+
+        pr = softmax_np(lvec[:CFG.board_size**2 + 1][idx])
+        order = list(zip(n.unexp, pr))
+        random.shuffle(order)
+        for m, p in order:
             ch = Node(n.g.copy(), n, m); ch.P = float(p)
             n.ch[m] = ch
         n.unexp.clear()
@@ -425,8 +504,16 @@ def backup(n: Node, value: float):
 def mcts(game: GoGame, net: PolicyValueNet,
          sims: int = CFG.mcts_sims, temp: float = 1.0,
          batch_size: int = 128):
+    
     root = Node(game.copy())
     nn_eval([root], net)
+
+    if root is not None:
+        e = 0.25
+        a = 0.03
+        dir_noise = np.random.dirichlet([a] * len(root.ch))
+        for (mv, ch), n in zip(root.ch.items(), dir_noise):
+            ch.P = (1 - e) * ch.P + e * n
 
     leaves: List[Node] = []
     for _ in range(sims):
@@ -494,9 +581,13 @@ def self_play_worker(args):
         pi = mcts(game, net, sims_per_move, 1.0)
         if not pi: break                                    # safety: no legal
 
-        vec = np.zeros(CFG.board_size**2, np.float32)
+        vec = np.zeros(CFG.board_size**2 + 1, np.float32)   # +1 for PASS
         for mv, p in pi.items():
-            vec[mv[0] * CFG.board_size + mv[1]] = p
+            if mv == PASS:
+                vec[-1] = p
+            else:
+                vec[mv[0] * CFG.board_size + mv[1]] = p
+
         records.append((game.board.copy(), game.current_player, vec))
         mv = random.choices(list(pi.keys()), weights=list(pi.values()))[0]
         game.make_move(*mv)
@@ -567,7 +658,7 @@ def train(net: PolicyValueNet, batch, it_idx):
             with torch.autocast(device_type="cuda", enabled=CFG.amp,
                                 dtype=torch.bfloat16):
                 out_p, out_v = net(inp)
-                loss_p = -(tgt_pi * F.log_softmax(out_p[:, :CFG.board_size**2], 1)).sum(1).mean()
+                loss_p = -(tgt_pi * F.log_softmax(out_p, 1)).sum(1).mean()
                 loss_v = F.mse_loss(out_v, tgt_z)
                 loss   = loss_p + loss_v
             scaler.scale(loss).backward(); scaler.step(opt); scaler.update()
@@ -716,7 +807,7 @@ def main():
                 try:
                     rec = ar.get(timeout=CFG.worker_timeout)
                 except multiprocessing.TimeoutError:
-                    LOGGER.error("A worker timed out – game dropped "
+                    LOGGER.error("A worker timed out - game dropped "
                                  "(consider raising Config.worker_timeout "
                                  "or lowering mcts_sims_worker).")
                     continue                                  # ★ MOD keep loop alive
