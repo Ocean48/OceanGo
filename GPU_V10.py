@@ -47,12 +47,12 @@ class Config:
     grid: int = 50             # Pixel width of one cell in the GUI.
 
     # ── 3. Self-play schedule (how much data you generate) ────
-    n_iter: int = 60           # Outer training loops per run.
+    n_iter: int = 100           # Outer training loops per run.
     games_per_iter: int = 48   # Parallel self-play games each loop.
 
     # ── 4. MCTS search depth & Hyperparameters ────────────────
     mcts_sims: int = 5_000                # Used in GUI for a very strong opponent.
-    mcts_sims_worker: int = 1_600         # Sims per move in self-play.
+    mcts_sims_worker: int = 5_000         # Sims per move in self-play.
     mcts_batch_size: int = 256            # Batch size for NN evals inside MCTS.
     mcts_c_puct: float = 1.25             # Exploration factor in PUCT.
     dirichlet_alpha: float = 0.1          # Noise for root node exploration.
@@ -75,11 +75,11 @@ class Config:
 
     # ── 8. Hardware toggles ───────────────────────────────────
     amp: bool = True           # Automatic Mixed Precision on GPU.
-    num_workers: int = 16      # GPU processes that run self-play.
+    num_workers: int = 20      # GPU processes that run self-play.
 
     # ── 9. Robustness knobs (watch-dog & move cap) ────────────
     max_moves: Optional[int] = None              # Per-game hard cap; None → unlimited.
-    worker_timeout: Optional[int] = 6 * 3600     # 6 hours; None → disable.
+    worker_timeout: Optional[int] = None         # 6 hours; None → disable.
 
 
 # ───────────────────────── TQDM HELPERS ─────────────────────────
@@ -89,7 +89,7 @@ tqdm_bar = partial(
     tqdm,
     dynamic_ncols=True,
     bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} {unit} "
-               "[{elapsed}<{remaining}, {rate_fmt}{postfix}]",
+            "[{elapsed}<{remaining}, {rate_fmt}{postfix}]",
 )
 
 # Make tqdm output from multiple processes cooperate
@@ -229,11 +229,8 @@ def softmax_np(x):
     e = np.exp(x - x.max())
     return e / e.sum()
 
-## CHANGELOG: A new, stricter scoring function for self-play training.
-# It only counts territory and captures, not stones on the board, to
-# force the AI to learn to control space instead of just placing stones.
 def _territory_score(game: "GoGame") -> float:
-    board = game.board
+    board = game.board.copy()
     bs = board.shape[0]
     seen = np.zeros_like(board, dtype=bool)
     
@@ -263,7 +260,6 @@ def _territory_score(game: "GoGame") -> float:
                             else:
                                 border_colors.add(col)
 
-                # Mark all cells in this empty group as seen
                 for ex, ey in empties:
                     seen[ex, ey] = True
                 
@@ -328,7 +324,6 @@ class GoGame:
         self.current_player = 1
         self.history: List[np.ndarray] = []
         self.ko_point: Optional[Tuple[int, int]] = None
-        ## CHANGELOG: Added tracking for captured stones, essential for territory scoring.
         self.komi = CFG.komi
         self.captured_by_black = 0
         self.captured_by_white = 0
@@ -423,13 +418,11 @@ class GoGame:
 
         if not self._has_liberty((x, y), self.board):
             self.board = prev_board
-            # Restore captured counts if the move was illegal suicide
             if num_captured > 0:
                 if self.current_player == 1: self.captured_by_black -= num_captured
                 else: self.captured_by_white -= num_captured
             return False
 
-        # Correct simple-Ko check: board cannot be identical to 2 plies ago
         if len(self.history) >= 2 and np.array_equal(self.board, self.history[-2]):
             self.board = prev_board
             if num_captured > 0:
@@ -437,7 +430,6 @@ class GoGame:
                 else: self.captured_by_white -= num_captured
             return False
 
-        # Update Ko point (only for single stone captures)
         self.ko_point = None
         if num_captured == 1:
             diff = prev_board - self.board
@@ -448,7 +440,7 @@ class GoGame:
                     temp_board = self.board.copy()
                     temp_board[ko_x, ko_y] = self.opponent_player
                     if not self._has_liberty((ko_x, ko_y), temp_board):
-                         self.ko_point = (ko_x, ko_y)
+                        self.ko_point = (ko_x, ko_y)
 
         self.history.append(prev_board)
         self.switch()
@@ -496,7 +488,41 @@ class GoGame:
     def state_tensor(self):
         p, o = self.current_player, self.opponent_player
         return torch.from_numpy(np.stack([(self.board == p).astype(np.float32),
-                                          (self.board == o).astype(np.float32)], 0))
+                                        (self.board == o).astype(np.float32)], 0))
+
+## CHANGELOG: New helper function to simulate the removal of dead stones post-game.
+def _cleanup_dead_stones(board, black_captures, white_captures):
+    """
+    Iteratively removes dead groups from the board until no more can be removed.
+    This simulates the "removing dead stones" phase of a real game for accurate scoring.
+    """
+    temp_board = board.copy()
+    bs = temp_board.shape[0]
+
+    for _ in range(bs * bs): # Iterate enough times to resolve complex chains
+        stones_removed_this_pass = False
+        for p_to_check in [1, 2]: # Check for dead black stones, then dead white stones
+            visited = set()
+            for r in range(bs):
+                for c in range(bs):
+                    if temp_board[r, c] == p_to_check and (r, c) not in visited:
+                        game_sim = GoGame()
+                        game_sim.board = temp_board
+                        grp, lib = game_sim._find_group((r, c), temp_board)
+                        visited.update(grp)
+                        
+                        if not lib:
+                            for stone_r, stone_c in grp:
+                                temp_board[stone_r, stone_c] = 0
+                            
+                            if p_to_check == 1: white_captures += len(grp)
+                            else: black_captures += len(grp)
+                            stones_removed_this_pass = True
+        
+        if not stones_removed_this_pass:
+            break
+            
+    return temp_board, black_captures, white_captures
 
 # ==========================================================
 #                     MCTS  (NN-guided)
@@ -513,7 +539,7 @@ def select(node: 'Node'):
     while True:
         if node.unexp or not node.ch: return node
         node = max(node.ch.values(),
-                   key=lambda c: c.Q + CFG.mcts_c_puct * c.P * math.sqrt(node.N) / (1 + c.N))
+                key=lambda c: c.Q + CFG.mcts_c_puct * c.P * math.sqrt(node.N) / (1 + c.N))
 
 @torch.no_grad()
 def nn_eval(batch: List[Node], net: PolicyValueNet):
@@ -623,12 +649,7 @@ def self_play_worker(args):
         pi = mcts(game, net, sims_per_move, temp, add_noise=True)
         if not pi: break
 
-        vec = np.zeros(CFG.board_size**2 + 1, np.float32)
-        for mv, p in pi.items():
-            if mv == PASS: vec[-1] = p
-            else: vec[mv[0] * CFG.board_size + mv[1]] = p
-
-        records.append((game.board.copy(), game.current_player, vec))
+        records.append((game.board.copy(), game.current_player, pi))
         mv = random.choices(list(pi.keys()), weights=list(pi.values()))[0]
         game.make_move(*mv)
         move_ctr += 1
@@ -638,10 +659,19 @@ def self_play_worker(args):
         LOGGER.warning("Worker %d hit max_moves → forcing end as a DRAW", rank)
         w = 0
     else:
-        ## CHANGELOG: Use territory scoring for determining the training outcome.
-        final_score = game.get_score(use_territory_scoring=True)
-        score_margin = abs(final_score)
-        w = 0 if score_margin < 1e-3 else (1 if final_score > 0 else 2)
+        # CRITICAL: Before scoring, simulate the removal of dead stones.
+        final_board, final_black_captures, final_white_captures = _cleanup_dead_stones(
+            game.board, game.captured_by_black, game.captured_by_white
+        )
+        
+        # Create a temporary game state with the cleaned board for accurate scoring
+        scoring_game = GoGame()
+        scoring_game.board = final_board
+        scoring_game.captured_by_black = final_black_captures
+        scoring_game.captured_by_white = final_white_captures
+        
+        final_score = scoring_game.get_score(use_territory_scoring=True)
+        w = 0 if abs(final_score) < 1e-3 else (1 if final_score > 0 else 2)
         
     if rank == 0: moves_bar.close()
 
@@ -650,8 +680,14 @@ def self_play_worker(args):
                 rank, len(records), player_map[w])
     
     training_data = []
-    for board_state, player, policy_vec in records:
+    for board_state, player, policy_dict in records:
         outcome = 0 if w == 0 else (1 if player == w else -1)
+        
+        policy_vec = np.zeros(CFG.board_size**2 + 1, np.float32)
+        for mv, p in policy_dict.items():
+            if mv == PASS: policy_vec[-1] = p
+            else: policy_vec[mv[0] * CFG.board_size + mv[1]] = p
+        
         training_data.append((board_state, player, policy_vec, outcome))
         
     return training_data, w
@@ -671,7 +707,7 @@ RB = Replay(CFG.replay_cap)
 # ==========================================================
 def planes(board, player):
     return np.stack([(board == player).astype(np.float32),
-                     (board == 3 - player).astype(np.float32)], 0)
+                    (board == 3 - player).astype(np.float32)], 0)
 
 def train(net: PolicyValueNet, batch_data, it_idx):
     LOGGER.info(
