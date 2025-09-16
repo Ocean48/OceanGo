@@ -100,7 +100,7 @@ root  = Path(__file__).resolve().parent
 def init_logger():
     fmt   = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
     datef = "%Y-%m-%d %H:%M:%S"
-    logf  = root / "ocean_go.log"
+    logf  = root / "    _go.log"
 
     # Rotate at 10 MB, keep 5 archives  ocean_go.log.1 … .5
     handler = logging.handlers.RotatingFileHandler(
@@ -672,6 +672,24 @@ def main():
 
     ckpt_name = (f"B{CFG.board_size}_I{CFG.n_iter}_G{CFG.games_per_iter}"
                  f"_S{CFG.mcts_sims_worker}_R{CFG.replay_cap//1000}k_E{CFG.train_epochs}")
+    ckpt_name = (
+        f"B{CFG.board_size}"
+        f"_Komi{CFG.komi}"
+        f"_Sims{CFG.mcts_sims_worker}w{CFG.mcts_sims}g"
+        f"_Replay{CFG.replay_cap}"
+        f"_Batch{CFG.train_batch}"
+        f"_Sample{CFG.train_sample_size}"
+        f"_Epochs{CFG.train_epochs}"
+        f"_LR{CFG.lr:.0e}"
+        f"_C{CFG.mcts_c_puct}"
+        f"_Alpha{CFG.dirichlet_alpha}"
+        f"_Temp{CFG.start_temp}"
+        f"_Decay{CFG.temp_decay_moves}"
+        f"_AMP{int(CFG.amp)}"
+        f"_Workers{CFG.num_workers}"
+        f"_MaxMoves{CFG.max_moves}"
+        f"_Timeout{CFG.worker_timeout}"
+    )
     ckpt = root / f"oceango_{ckpt_name}.pth"
     print("Checkpoint path:", ckpt)
     
