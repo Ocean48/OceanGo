@@ -1,0 +1,28 @@
+2025-09-16 19:09:11 | INFO    | OceanGo | 
+
+--------------------------------------------------------------------------------
+2025-09-16 19:09:11 | INFO    | OceanGo | session_id  : 3112031f
+2025-09-16 19:09:11 | INFO    | OceanGo | script      : GPU_V10.py
+2025-09-16 19:09:11 | INFO    | OceanGo | git_rev     : 76011ab
+2025-09-16 19:09:11 | INFO    | OceanGo | started_at  : 2025-09-16T19:09:11
+2025-09-16 19:09:11 | INFO    | OceanGo | host        : llm-5090
+2025-09-16 19:09:11 | INFO    | OceanGo | cuda        : 12.9
+2025-09-16 19:09:11 | INFO    | OceanGo | gpu         : NVIDIA GeForce RTX 5090
+2025-09-16 19:09:11 | INFO    | OceanGo | torch       : 2.8.0+cu129
+2025-09-16 19:09:11 | INFO    | OceanGo | python      : 3.12.3
+2025-09-16 19:09:11 | INFO    | OceanGo | ram_total   : 125.7 GB
+2025-09-16 19:09:11 | INFO    | OceanGo | config      : {'board_size': 9, 'komi': 6.5, 'grid': 50, 'n_iter': 100, 'games_per_iter': 48, 'mcts_sims': 5000, 'mcts_sims_worker': 5000, 'mcts_batch_size': 256, 'mcts_c_puct': 1.25, 'dirichlet_alpha': 0.1, 'start_temp': 1.0, 'temp_decay_moves': 40, 'min_moves_for_pass': 40, 'nn_blocks': 12, 'nn_channels': 128, 'replay_cap': 60000, 'train_sample_size': 8192, 'train_batch': 1024, 'train_epochs': 5, 'lr': 0.0001, 'amp': True, 'num_workers': 20, 'max_moves': 162, 'worker_timeout': None}
+2025-09-16 19:09:11 | INFO    | OceanGo | --------------------------------------------------------------------------------
+2025-09-16 19:10:07 | INFO    | OceanGo | Worker 8 finished: moves=64, winner=White
+2025-09-16 19:10:16 | INFO    | OceanGo | Worker 14 finished: moves=50, winner=White
+2025-09-16 19:10:21 | INFO    | OceanGo | Worker 18 finished: moves=80, winner=White
+2025-09-16 19:10:24 | INFO    | OceanGo | Worker 12 finished: moves=85, winner=White
+2025-09-16 19:10:25 | INFO    | OceanGo | Worker 1 finished: moves=58, winner=White
+2025-09-16 19:10:26 | INFO    | OceanGo | Worker 2 finished: moves=77, winner=White
+2025-09-16 19:10:32 | INFO    | OceanGo | Worker 15 finished: moves=65, winner=White
+2025-09-16 19:10:36 | INFO    | OceanGo | Worker 7 finished: moves=73, winner=White
+2025-09-16 19:10:39 | INFO    | OceanGo | Worker 13 finished: moves=75, winner=White
+2025-09-16 19:10:39 | INFO    | OceanGo | Worker 10 finished: moves=70, winner=Black
+2025-09-16 19:10:41 | INFO    | OceanGo | Worker 0 finished: moves=78, winner=Black
+2025-09-16 19:10:46 | INFO    | OceanGo | Worker 5 finished: moves=71, winner=White
+2025-09-16 19:10:51 | INFO    | OceanGo | Worker 16 finished: moves=72, winner=White
