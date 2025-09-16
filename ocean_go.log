@@ -32532,3 +32532,56 @@
 2025-06-25 12:18:37 | INFO    | OceanGo | Iter 60 | start training | batch=1024, epochs=5, lr=1.0e-04
 2025-06-25 12:18:37 | INFO    | OceanGo | Iter 60 finished - avg_loss=3.8669 (batch=1024)
 2025-06-25 12:18:37 | INFO    | root | Iter 60 | Final avg loss 3.8669
+2025-09-16 12:29:16 | INFO    | OceanGo | session_id  : fcc183c4
+2025-09-16 12:29:16 | INFO    | OceanGo | script      : GPU_V5.py
+2025-09-16 12:29:16 | INFO    | OceanGo | git_rev     : 13867d3
+2025-09-16 12:29:16 | INFO    | OceanGo | started_at  : 2025-09-16T12:29:16
+2025-09-16 12:29:16 | INFO    | OceanGo | python      : 3.12.3
+2025-09-16 12:29:16 | INFO    | OceanGo | session_id  : 789cf56b
+2025-09-16 12:29:16 | INFO    | OceanGo | script      : GPU_V5.py
+2025-09-16 12:29:16 | INFO    | OceanGo | git_rev     : 13867d3
+2025-09-16 12:29:16 | INFO    | OceanGo | started_at  : 2025-09-16T12:29:16
+2025-09-16 12:29:16 | INFO    | OceanGo | host        : llm-5090
+2025-09-16 12:29:16 | INFO    | OceanGo | cuda        : 12.6
+2025-09-16 12:29:16 | INFO    | OceanGo | gpu         : CPU
+2025-09-16 12:29:16 | INFO    | OceanGo | torch       : 2.7.0+cu126
+2025-09-16 12:29:16 | INFO    | OceanGo | python      : 3.12.3
+2025-09-16 12:29:16 | INFO    | OceanGo | ram_total   : 125.7 GB
+2025-09-16 12:29:16 | INFO    | OceanGo | config      : {'board_size': 9, 'grid': 50, 'n_iter': 60, 'games_per_iter': 40, 'mcts_sims': 5000, 'mcts_sims_worker': 1200, 'replay_cap': 40000, 'train_batch': 512, 'train_epochs': 5, 'lr': 0.0001, 'amp': True, 'num_workers': 12, 'max_moves': 162, 'worker_timeout': 21600}
+2025-09-16 12:29:16 | INFO    | OceanGo | 
+2025-09-16 12:32:06 | INFO    | OceanGo | session_id  : 47e8ef0a
+2025-09-16 12:32:06 | INFO    | OceanGo | script      : GPU_V6.py
+2025-09-16 12:32:06 | INFO    | OceanGo | git_rev     : 13867d3
+2025-09-16 12:32:06 | INFO    | OceanGo | started_at  : 2025-09-16T12:32:06
+2025-09-16 12:32:06 | INFO    | OceanGo | host        : llm-5090
+2025-09-16 12:32:06 | INFO    | OceanGo | cuda        : 12.6
+2025-09-16 12:32:06 | INFO    | OceanGo | gpu         : CPU
+2025-09-16 12:32:06 | INFO    | OceanGo | torch       : 2.7.0+cu126
+2025-09-16 12:32:06 | INFO    | OceanGo | python      : 3.12.3
+2025-09-16 12:32:06 | INFO    | OceanGo | ram_total   : 125.7 GB
+2025-09-16 12:32:06 | INFO    | OceanGo | config      : {'board_size': 9, 'komi': 6.5, 'grid': 50, 'n_iter': 60, 'games_per_iter': 40, 'mcts_sims': 5000, 'mcts_sims_worker': 1200, 'replay_cap': 40000, 'train_sample_size': 4096, 'train_batch': 512, 'train_epochs': 5, 'lr': 0.0001, 'amp': True, 'num_workers': 12, 'max_moves': 162, 'worker_timeout': 21600}
+2025-09-16 12:32:06 | INFO    | OceanGo | --------------------------------------------------------------------------------
+2025-09-16 12:32:13 | INFO    | OceanGo | session_id  : d9df4edb
+2025-09-16 12:32:13 | INFO    | OceanGo | script      : GPU_V6.py
+2025-09-16 12:32:13 | INFO    | OceanGo | git_rev     : 13867d3
+2025-09-16 12:32:13 | INFO    | OceanGo | started_at  : 2025-09-16T12:32:13
+2025-09-16 12:32:13 | INFO    | OceanGo | host        : llm-5090
+2025-09-16 12:32:13 | INFO    | OceanGo | cuda        : 12.6
+2025-09-16 12:32:13 | INFO    | OceanGo | gpu         : CPU
+2025-09-16 12:32:13 | INFO    | OceanGo | torch       : 2.7.0+cu126
+2025-09-16 12:32:13 | INFO    | OceanGo | python      : 3.12.3
+2025-09-16 12:32:13 | INFO    | OceanGo | ram_total   : 125.7 GB
+2025-09-16 12:32:13 | INFO    | OceanGo | config      : {'board_size': 9, 'komi': 6.5, 'grid': 50, 'n_iter': 60, 'games_per_iter': 40, 'mcts_sims': 5000, 'mcts_sims_worker': 1200, 'replay_cap': 40000, 'train_sample_size': 4096, 'train_batch': 512, 'train_epochs': 5, 'lr': 0.0001, 'amp': True, 'num_workers': 12, 'max_moves': 162, 'worker_timeout': 21600}
+2025-09-16 12:32:13 | INFO    | OceanGo | --------------------------------------------------------------------------------
+2025-09-16 12:33:00 | INFO    | OceanGo | session_id  : 7cb1d2af
+2025-09-16 12:33:00 | INFO    | OceanGo | script      : GPU_V6.py
+2025-09-16 12:33:00 | INFO    | OceanGo | git_rev     : 13867d3
+2025-09-16 12:33:00 | INFO    | OceanGo | started_at  : 2025-09-16T12:33:00
+2025-09-16 12:33:00 | INFO    | OceanGo | host        : llm-5090
+2025-09-16 12:33:00 | INFO    | OceanGo | cuda        : 12.6
+2025-09-16 12:33:00 | INFO    | OceanGo | gpu         : CPU
+2025-09-16 12:33:00 | INFO    | OceanGo | torch       : 2.7.0+cu126
+2025-09-16 12:33:00 | INFO    | OceanGo | python      : 3.12.3
+2025-09-16 12:33:00 | INFO    | OceanGo | ram_total   : 125.7 GB
+2025-09-16 12:33:00 | INFO    | OceanGo | config      : {'board_size': 9, 'komi': 6.5, 'grid': 50, 'n_iter': 60, 'games_per_iter': 40, 'mcts_sims': 5000, 'mcts_sims_worker': 1200, 'replay_cap': 40000, 'train_sample_size': 4096, 'train_batch': 512, 'train_epochs': 5, 'lr': 0.0001, 'amp': True, 'num_workers': 12, 'max_moves': 162, 'worker_timeout': 21600}
+2025-09-16 12:33:00 | INFO    | OceanGo | --------------------------------------------------------------------------------
