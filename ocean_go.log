@@ -1,28 +1,351 @@
-2025-09-16 19:09:11 | INFO    | OceanGo | 
+2025-09-17 13:19:46 | INFO    | OceanGo | 
 
 --------------------------------------------------------------------------------
-2025-09-16 19:09:11 | INFO    | OceanGo | session_id  : 3112031f
-2025-09-16 19:09:11 | INFO    | OceanGo | script      : GPU_V10.py
-2025-09-16 19:09:11 | INFO    | OceanGo | git_rev     : 76011ab
-2025-09-16 19:09:11 | INFO    | OceanGo | started_at  : 2025-09-16T19:09:11
-2025-09-16 19:09:11 | INFO    | OceanGo | host        : llm-5090
-2025-09-16 19:09:11 | INFO    | OceanGo | cuda        : 12.9
-2025-09-16 19:09:11 | INFO    | OceanGo | gpu         : NVIDIA GeForce RTX 5090
-2025-09-16 19:09:11 | INFO    | OceanGo | torch       : 2.8.0+cu129
-2025-09-16 19:09:11 | INFO    | OceanGo | python      : 3.12.3
-2025-09-16 19:09:11 | INFO    | OceanGo | ram_total   : 125.7 GB
-2025-09-16 19:09:11 | INFO    | OceanGo | config      : {'board_size': 9, 'komi': 6.5, 'grid': 50, 'n_iter': 100, 'games_per_iter': 48, 'mcts_sims': 5000, 'mcts_sims_worker': 5000, 'mcts_batch_size': 256, 'mcts_c_puct': 1.25, 'dirichlet_alpha': 0.1, 'start_temp': 1.0, 'temp_decay_moves': 40, 'min_moves_for_pass': 40, 'nn_blocks': 12, 'nn_channels': 128, 'replay_cap': 60000, 'train_sample_size': 8192, 'train_batch': 1024, 'train_epochs': 5, 'lr': 0.0001, 'amp': True, 'num_workers': 20, 'max_moves': 162, 'worker_timeout': None}
-2025-09-16 19:09:11 | INFO    | OceanGo | --------------------------------------------------------------------------------
-2025-09-16 19:10:07 | INFO    | OceanGo | Worker 8 finished: moves=64, winner=White
-2025-09-16 19:10:16 | INFO    | OceanGo | Worker 14 finished: moves=50, winner=White
-2025-09-16 19:10:21 | INFO    | OceanGo | Worker 18 finished: moves=80, winner=White
-2025-09-16 19:10:24 | INFO    | OceanGo | Worker 12 finished: moves=85, winner=White
-2025-09-16 19:10:25 | INFO    | OceanGo | Worker 1 finished: moves=58, winner=White
-2025-09-16 19:10:26 | INFO    | OceanGo | Worker 2 finished: moves=77, winner=White
-2025-09-16 19:10:32 | INFO    | OceanGo | Worker 15 finished: moves=65, winner=White
-2025-09-16 19:10:36 | INFO    | OceanGo | Worker 7 finished: moves=73, winner=White
-2025-09-16 19:10:39 | INFO    | OceanGo | Worker 13 finished: moves=75, winner=White
-2025-09-16 19:10:39 | INFO    | OceanGo | Worker 10 finished: moves=70, winner=Black
-2025-09-16 19:10:41 | INFO    | OceanGo | Worker 0 finished: moves=78, winner=Black
-2025-09-16 19:10:46 | INFO    | OceanGo | Worker 5 finished: moves=71, winner=White
-2025-09-16 19:10:51 | INFO    | OceanGo | Worker 16 finished: moves=72, winner=White
+2025-09-17 13:19:46 | INFO    | OceanGo | session_id  : af9bbbd5
+2025-09-17 13:19:46 | INFO    | OceanGo | script      : GPU_V12.py
+2025-09-17 13:19:46 | INFO    | OceanGo | git_rev     : b56a4b9
+2025-09-17 13:19:46 | INFO    | OceanGo | started_at  : 2025-09-17T13:19:46
+2025-09-17 13:19:46 | INFO    | OceanGo | host        : llm-5090
+2025-09-17 13:19:46 | INFO    | OceanGo | cuda        : 12.9
+2025-09-17 13:19:46 | INFO    | OceanGo | gpu         : NVIDIA GeForce RTX 5090
+2025-09-17 13:19:46 | INFO    | OceanGo | torch       : 2.8.0+cu129
+2025-09-17 13:19:46 | INFO    | OceanGo | python      : 3.12.3
+2025-09-17 13:19:46 | INFO    | OceanGo | ram_total   : 125.7 GB
+2025-09-17 13:19:46 | INFO    | OceanGo | config      : {'board_size': 9, 'komi': 6.5, 'grid': 50, 'n_iter': 100, 'games_per_iter': 48, 'mcts_sims': 5000, 'mcts_sims_worker': 5000, 'mcts_batch_size': 256, 'mcts_c_puct': 1.25, 'dirichlet_alpha': 0.1, 'start_temp': 1.0, 'temp_decay_moves': 40, 'min_moves_for_pass': 40, 'cleanup_moves': 18, 'cleanup_policy_temp': 0.5, 'nn_blocks': 12, 'nn_channels': 128, 'replay_cap': 60000, 'train_sample_size': 8192, 'train_batch': 1024, 'train_epochs': 5, 'lr': 0.0001, 'amp': True, 'num_workers': 20, 'max_moves': 162, 'worker_timeout': None}
+2025-09-17 13:19:46 | INFO    | OceanGo | --------------------------------------------------------------------------------
+2025-09-17 13:20:41 | INFO    | OceanGo | Worker 7 finished: moves=45, winner=Black
+2025-09-17 13:20:45 | INFO    | OceanGo | Worker 16 finished: moves=61, winner=White
+2025-09-17 13:20:47 | INFO    | OceanGo | Worker 9 finished: moves=55, winner=White
+2025-09-17 13:20:49 | INFO    | OceanGo | Worker 1 finished: moves=76, winner=Black
+2025-09-17 13:20:49 | INFO    | OceanGo | Final board state for Worker 1:
+   A B C D E F G H I
+1  O O O O O O . . .
+2  X O O O . O X X O
+3  X . O X O O X X X
+4  X X O . O O O O X
+5  X X X O O . O O .
+6  X X O O X X O X X
+7  . . X . X X X X X
+8  X . X O X . . X X
+9  X X . O X . . X X
+2025-09-17 13:20:50 | INFO    | OceanGo | Worker 6 finished: moves=50, winner=White
+2025-09-17 13:20:51 | INFO    | OceanGo | Worker 11 finished: moves=63, winner=Black
+2025-09-17 13:20:53 | INFO    | OceanGo | Worker 15 finished: moves=71, winner=White
+2025-09-17 13:20:59 | INFO    | OceanGo | Worker 10 finished: moves=60, winner=White
+2025-09-17 13:21:02 | INFO    | OceanGo | Worker 12 finished: moves=62, winner=White
+2025-09-17 13:21:03 | INFO    | OceanGo | Worker 18 finished: moves=61, winner=Black
+2025-09-17 13:21:06 | INFO    | OceanGo | Worker 0 finished: moves=80, winner=White
+2025-09-17 13:21:06 | INFO    | OceanGo | Final board state for Worker 0:
+   A B C D E F G H I
+1  X X X X X O O O O
+2  X X X X . . O X .
+3  X O O X X O O O O
+4  X X . X O O O O O
+5  X X . X X X X O O
+6  X X X X X . X O X
+7  O O X O O O O X .
+8  O X O O O X X X X
+9  O . O O O O O X .
+2025-09-17 13:21:12 | INFO    | OceanGo | Worker 5 finished: moves=80, winner=White
+2025-09-17 13:21:12 | INFO    | OceanGo | Worker 2 finished: moves=70, winner=White
+2025-09-17 13:21:12 | INFO    | OceanGo | Final board state for Worker 2:
+   A B C D E F G H I
+1  . X X . O . . . O
+2  X O . O X O . . .
+3  . X O O . X . X .
+4  X X X O O X X O O
+5  X X . X X . . . O
+6  . X X O O X O O O
+7  X . X X . X O . O
+8  X X O . X X O O O
+9  O O O X X X O O .
+2025-09-17 13:21:17 | INFO    | OceanGo | Worker 8 finished: moves=85, winner=White
+2025-09-17 13:21:18 | INFO    | OceanGo | Worker 4 finished: moves=74, winner=White
+2025-09-17 13:21:23 | INFO    | OceanGo | Worker 21 finished: moves=57, winner=White
+2025-09-17 13:21:24 | INFO    | OceanGo | Worker 3 finished: moves=90, winner=Black
+2025-09-17 13:21:30 | INFO    | OceanGo | Worker 14 finished: moves=73, winner=White
+2025-09-17 13:21:33 | INFO    | OceanGo | Worker 19 finished: moves=77, winner=White
+2025-09-17 13:21:33 | INFO    | OceanGo | Worker 13 finished: moves=86, winner=White
+2025-09-17 13:21:34 | INFO    | OceanGo | Worker 17 finished: moves=78, winner=White
+2025-09-17 13:21:44 | INFO    | OceanGo | Worker 27 finished: moves=57, winner=White
+2025-09-17 13:21:53 | INFO    | OceanGo | Worker 26 finished: moves=57, winner=White
+2025-09-17 13:21:53 | INFO    | OceanGo | Worker 30 finished: moves=55, winner=Black
+2025-09-17 13:21:58 | INFO    | OceanGo | Worker 24 finished: moves=60, winner=White
+2025-09-17 13:22:04 | INFO    | OceanGo | Worker 23 finished: moves=104, winner=Black
+2025-09-17 13:22:05 | INFO    | OceanGo | Worker 22 finished: moves=74, winner=Black
+2025-09-17 13:22:17 | INFO    | OceanGo | Worker 20 finished: moves=88, winner=White
+2025-09-17 13:22:22 | INFO    | OceanGo | Worker 39 finished: moves=46, winner=White
+2025-09-17 13:22:23 | INFO    | OceanGo | Worker 28 finished: moves=66, winner=White
+2025-09-17 13:22:24 | INFO    | OceanGo | Worker 31 finished: moves=65, winner=Black
+2025-09-17 13:22:26 | INFO    | OceanGo | Worker 41 finished: moves=62, winner=White
+2025-09-17 13:22:27 | INFO    | OceanGo | Worker 32 finished: moves=65, winner=White
+2025-09-17 13:22:31 | INFO    | OceanGo | Worker 38 finished: moves=62, winner=Black
+2025-09-17 13:22:32 | INFO    | OceanGo | Worker 43 finished: moves=61, winner=White
+2025-09-17 13:22:33 | INFO    | OceanGo | Worker 29 finished: moves=86, winner=Black
+2025-09-17 13:22:33 | INFO    | OceanGo | Worker 25 finished: moves=102, winner=White
+2025-09-17 13:22:33 | INFO    | OceanGo | Worker 33 finished: moves=69, winner=Black
+2025-09-17 13:22:34 | INFO    | OceanGo | Worker 40 finished: moves=66, winner=Black
+2025-09-17 13:22:36 | INFO    | OceanGo | Worker 45 finished: moves=46, winner=White
+2025-09-17 13:22:36 | INFO    | OceanGo | Worker 36 finished: moves=73, winner=White
+2025-09-17 13:22:36 | INFO    | OceanGo | Worker 35 finished: moves=94, winner=White
+2025-09-17 13:22:40 | INFO    | OceanGo | Worker 46 finished: moves=42, winner=White
+2025-09-17 13:22:40 | INFO    | OceanGo | Worker 37 finished: moves=77, winner=White
+2025-09-17 13:22:42 | INFO    | OceanGo | Worker 44 finished: moves=57, winner=White
+2025-09-17 13:22:52 | INFO    | OceanGo | Worker 47 finished: moves=64, winner=White
+2025-09-17 13:22:53 | INFO    | OceanGo | Worker 42 finished: moves=83, winner=Black
+2025-09-17 13:23:04 | INFO    | OceanGo | Worker 34 finished: moves=146, winner=White
+2025-09-17 13:23:05 | INFO    | OceanGo | Iter 1 self-play stats: B wins: 29.2% (14) | W wins: 70.8% (34) | Draws: 0 | Avg game len: 70.4
+2025-09-17 13:23:05 | INFO    | OceanGo | Iter 1 | start training | samples=3381, epochs=5, lr=1.0e-04
+2025-09-17 13:23:10 | INFO    | OceanGo | Iter 1 finished - avg_loss=4.6302 (p=4.2892, v=0.3410)
+2025-09-17 13:23:57 | INFO    | OceanGo | Worker 18 finished: moves=43, winner=White
+2025-09-17 13:23:57 | INFO    | OceanGo | Worker 15 finished: moves=50, winner=White
+2025-09-17 13:24:02 | INFO    | OceanGo | Worker 9 finished: moves=44, winner=White
+2025-09-17 13:24:04 | INFO    | OceanGo | Worker 7 finished: moves=53, winner=White
+2025-09-17 13:24:05 | INFO    | OceanGo | Worker 1 finished: moves=53, winner=White
+2025-09-17 13:24:05 | INFO    | OceanGo | Final board state for Worker 1:
+   A B C D E F G H I
+1  X X X . O O X X X
+2  O O O O . O X X .
+3  O X . O O O X O O
+4  X X O O . O X X .
+5  X O O . O . . O .
+6  . X X . . O O O X
+7  X X O O O O X O X
+8  X X O X X X . X X
+9  X X . X O . X X .
+2025-09-17 13:24:08 | INFO    | OceanGo | Worker 2 finished: moves=48, winner=White
+2025-09-17 13:24:08 | INFO    | OceanGo | Final board state for Worker 2:
+   A B C D E F G H I
+1  O O X X X X X . X
+2  X O O . X O O X .
+3  . X X X X O O O X
+4  O O O X X . . . O
+5  X X . O X . O O .
+6  X O O . O X X X O
+7  X O O O . . . O X
+8  X O O . X . . O .
+9  O O O X . X X . O
+2025-09-17 13:24:15 | INFO    | OceanGo | Worker 16 finished: moves=57, winner=White
+2025-09-17 13:24:20 | INFO    | OceanGo | Worker 8 finished: moves=88, winner=Black
+2025-09-17 13:24:22 | INFO    | OceanGo | Worker 11 finished: moves=71, winner=White
+2025-09-17 13:24:30 | INFO    | OceanGo | Worker 4 finished: moves=79, winner=White
+2025-09-17 13:24:30 | INFO    | OceanGo | Worker 13 finished: moves=75, winner=White
+2025-09-17 13:24:31 | INFO    | OceanGo | Worker 0 finished: moves=63, winner=White
+2025-09-17 13:24:31 | INFO    | OceanGo | Final board state for Worker 0:
+   A B C D E F G H I
+1  O . O O O O X . O
+2  . O O O O . X O O
+3  X O O O O X X . .
+4  O O X X X O X X X
+5  X O X X X O O O X
+6  . X X X X O X O .
+7  X X X . X X X O O
+8  O X X X X O X O .
+9  . X . X X O O . O
+2025-09-17 13:24:31 | INFO    | OceanGo | Worker 10 finished: moves=66, winner=Black
+2025-09-17 13:24:32 | INFO    | OceanGo | Worker 12 finished: moves=69, winner=White
+2025-09-17 13:24:35 | INFO    | OceanGo | Worker 6 finished: moves=65, winner=White
+2025-09-17 13:24:41 | INFO    | OceanGo | Worker 5 finished: moves=75, winner=White
+2025-09-17 13:24:44 | INFO    | OceanGo | Worker 17 finished: moves=84, winner=White
+2025-09-17 13:24:47 | INFO    | OceanGo | Worker 19 finished: moves=71, winner=White
+2025-09-17 13:24:51 | INFO    | OceanGo | Worker 14 finished: moves=86, winner=White
+2025-09-17 13:24:52 | INFO    | OceanGo | Worker 3 finished: moves=97, winner=White
+2025-09-17 13:24:57 | INFO    | OceanGo | Worker 21 finished: moves=55, winner=White
+2025-09-17 13:25:01 | INFO    | OceanGo | Worker 24 finished: moves=57, winner=White
+2025-09-17 13:25:04 | INFO    | OceanGo | Worker 27 finished: moves=51, winner=White
+2025-09-17 13:25:05 | INFO    | OceanGo | Worker 20 finished: moves=62, winner=Black
+2025-09-17 13:25:05 | INFO    | OceanGo | Worker 28 finished: moves=56, winner=White
+2025-09-17 13:25:09 | INFO    | OceanGo | Worker 23 finished: moves=73, winner=White
+2025-09-17 13:25:17 | INFO    | OceanGo | Worker 34 finished: moves=51, winner=White
+2025-09-17 13:25:20 | INFO    | OceanGo | Worker 29 finished: moves=63, winner=White
+2025-09-17 13:25:21 | INFO    | OceanGo | Worker 31 finished: moves=52, winner=White
+2025-09-17 13:25:22 | INFO    | OceanGo | Worker 32 finished: moves=53, winner=White
+2025-09-17 13:25:24 | INFO    | OceanGo | Worker 33 finished: moves=54, winner=White
+2025-09-17 13:25:28 | INFO    | OceanGo | Worker 35 finished: moves=47, winner=Black
+2025-09-17 13:25:32 | INFO    | OceanGo | Worker 26 finished: moves=90, winner=Black
+2025-09-17 13:25:35 | INFO    | OceanGo | Worker 22 finished: moves=98, winner=White
+2025-09-17 13:25:40 | INFO    | OceanGo | Worker 36 finished: moves=64, winner=Black
+2025-09-17 13:25:45 | INFO    | OceanGo | Worker 45 finished: moves=46, winner=White
+2025-09-17 13:25:47 | INFO    | OceanGo | Worker 37 finished: moves=65, winner=White
+2025-09-17 13:25:48 | INFO    | OceanGo | Worker 41 finished: moves=51, winner=White
+2025-09-17 13:25:50 | INFO    | OceanGo | Worker 40 finished: moves=65, winner=White
+2025-09-17 13:25:50 | INFO    | OceanGo | Worker 25 finished: moves=100, winner=White
+2025-09-17 13:25:52 | INFO    | OceanGo | Worker 38 finished: moves=70, winner=White
+2025-09-17 13:25:52 | INFO    | OceanGo | Worker 42 finished: moves=55, winner=White
+2025-09-17 13:25:54 | INFO    | OceanGo | Worker 43 finished: moves=66, winner=Black
+2025-09-17 13:25:56 | INFO    | OceanGo | Worker 30 finished: moves=90, winner=Black
+2025-09-17 13:25:57 | INFO    | OceanGo | Worker 39 finished: moves=83, winner=White
+2025-09-17 13:26:00 | INFO    | OceanGo | Worker 47 finished: moves=65, winner=Black
+2025-09-17 13:26:00 | INFO    | OceanGo | Worker 44 finished: moves=71, winner=White
+2025-09-17 13:26:01 | INFO    | OceanGo | Worker 46 finished: moves=68, winner=White
+2025-09-17 13:26:02 | INFO    | OceanGo | Iter 2 self-play stats: B wins: 18.8% (9) | W wins: 81.2% (39) | Draws: 0 | Avg game len: 65.8
+2025-09-17 13:26:02 | INFO    | OceanGo | Iter 2 | start training | samples=6539, epochs=5, lr=1.0e-04
+2025-09-17 13:26:06 | INFO    | OceanGo | Iter 2 finished - avg_loss=4.2367 (p=4.1171, v=0.1196)
+2025-09-17 13:26:49 | INFO    | OceanGo | Worker 8 finished: moves=46, winner=White
+2025-09-17 13:27:01 | INFO    | OceanGo | Worker 3 finished: moves=45, winner=White
+2025-09-17 13:27:02 | INFO    | OceanGo | Worker 18 finished: moves=63, winner=White
+2025-09-17 13:27:04 | INFO    | OceanGo | Worker 4 finished: moves=76, winner=White
+2025-09-17 13:27:11 | INFO    | OceanGo | Worker 19 finished: moves=50, winner=White
+2025-09-17 13:27:11 | INFO    | OceanGo | Worker 13 finished: moves=48, winner=White
+2025-09-17 13:27:12 | INFO    | OceanGo | Worker 5 finished: moves=51, winner=White
+2025-09-17 13:27:15 | INFO    | OceanGo | Worker 9 finished: moves=59, winner=White
+2025-09-17 13:27:16 | INFO    | OceanGo | Worker 10 finished: moves=59, winner=Black
+2025-09-17 13:27:17 | INFO    | OceanGo | Worker 1 finished: moves=79, winner=White
+2025-09-17 13:27:17 | INFO    | OceanGo | Final board state for Worker 1:
+   A B C D E F G H I
+1  O O O O O X . X O
+2  O O X X O X X X .
+3  X O . X X X X . O
+4  X O X . X X X . O
+5  X X X X X X X X O
+6  X X X X X O O O O
+7  O X X X O O . O O
+8  O O O O O O O O O
+9  O . O O . O . O O
+2025-09-17 13:27:19 | INFO    | OceanGo | Worker 12 finished: moves=65, winner=Black
+2025-09-17 13:27:19 | INFO    | OceanGo | Worker 16 finished: moves=60, winner=Black
+2025-09-17 13:27:21 | INFO    | OceanGo | Worker 17 finished: moves=61, winner=White
+2025-09-17 13:27:26 | INFO    | OceanGo | Worker 15 finished: moves=55, winner=White
+2025-09-17 13:27:32 | INFO    | OceanGo | Worker 7 finished: moves=79, winner=White
+2025-09-17 13:27:33 | INFO    | OceanGo | Worker 14 finished: moves=75, winner=White
+2025-09-17 13:27:34 | INFO    | OceanGo | Worker 0 finished: moves=72, winner=White
+2025-09-17 13:27:34 | INFO    | OceanGo | Final board state for Worker 0:
+   A B C D E F G H I
+1  X X X . . X X . .
+2  X X X O X X X O O
+3  O . X X X X X X X
+4  O X O O X . X O .
+5  O O O X X O X X O
+6  O O O X O X X X O
+7  O O O O O X O . X
+8  O . O . O X O X X
+9  O O O O O O X X .
+2025-09-17 13:27:34 | INFO    | OceanGo | Worker 11 finished: moves=65, winner=White
+2025-09-17 13:27:36 | INFO    | OceanGo | Worker 6 finished: moves=72, winner=Black
+2025-09-17 13:27:37 | INFO    | OceanGo | Worker 2 finished: moves=74, winner=Black
+2025-09-17 13:27:37 | INFO    | OceanGo | Final board state for Worker 2:
+   A B C D E F G H I
+1  X X . X O O O X .
+2  . O X X X O O X X
+3  O . X O X O O O X
+4  X X O O X . O O .
+5  . O O O O O O X X
+6  X X O O O X X X X
+7  . O X X O X X O .
+8  X . X X X X O O X
+9  . X X X X X O X X
+2025-09-17 13:27:37 | INFO    | OceanGo | Worker 20 finished: moves=53, winner=White
+2025-09-17 13:27:43 | INFO    | OceanGo | Worker 22 finished: moves=44, winner=White
+2025-09-17 13:28:02 | INFO    | OceanGo | Worker 24 finished: moves=50, winner=White
+2025-09-17 13:28:05 | INFO    | OceanGo | Worker 21 finished: moves=74, winner=Black
+2025-09-17 13:28:11 | INFO    | OceanGo | Worker 33 finished: moves=46, winner=White
+2025-09-17 13:28:15 | INFO    | OceanGo | Worker 25 finished: moves=58, winner=White
+2025-09-17 13:28:20 | INFO    | OceanGo | Worker 36 finished: moves=63, winner=Black
+2025-09-17 13:28:21 | INFO    | OceanGo | Worker 35 finished: moves=48, winner=White
+2025-09-17 13:28:22 | INFO    | OceanGo | Worker 29 finished: moves=69, winner=Black
+2025-09-17 13:28:24 | INFO    | OceanGo | Worker 23 finished: moves=71, winner=White
+2025-09-17 13:28:30 | INFO    | OceanGo | Worker 39 finished: moves=55, winner=White
+2025-09-17 13:28:30 | INFO    | OceanGo | Worker 30 finished: moves=66, winner=White
+2025-09-17 13:28:30 | INFO    | OceanGo | Worker 27 finished: moves=79, winner=White
+2025-09-17 13:28:31 | INFO    | OceanGo | Worker 40 finished: moves=49, winner=White
+2025-09-17 13:28:31 | INFO    | OceanGo | Worker 26 finished: moves=72, winner=Black
+2025-09-17 13:28:31 | INFO    | OceanGo | Worker 38 finished: moves=70, winner=Black
+2025-09-17 13:28:33 | INFO    | OceanGo | Worker 34 finished: moves=80, winner=Black
+2025-09-17 13:28:34 | INFO    | OceanGo | Worker 37 finished: moves=66, winner=White
+2025-09-17 13:28:37 | INFO    | OceanGo | Worker 31 finished: moves=73, winner=White
+2025-09-17 13:28:38 | INFO    | OceanGo | Worker 28 finished: moves=76, winner=White
+2025-09-17 13:28:40 | INFO    | OceanGo | Worker 32 finished: moves=80, winner=White
+2025-09-17 13:28:44 | INFO    | OceanGo | Worker 41 finished: moves=67, winner=White
+2025-09-17 13:28:49 | INFO    | OceanGo | Worker 47 finished: moves=51, winner=White
+2025-09-17 13:28:52 | INFO    | OceanGo | Worker 43 finished: moves=76, winner=White
+2025-09-17 13:28:56 | INFO    | OceanGo | Worker 46 finished: moves=62, winner=Black
+2025-09-17 13:28:56 | INFO    | OceanGo | Worker 45 finished: moves=66, winner=White
+2025-09-17 13:28:57 | INFO    | OceanGo | Worker 42 finished: moves=79, winner=White
+2025-09-17 13:28:57 | INFO    | OceanGo | Worker 44 finished: moves=78, winner=White
+2025-09-17 13:28:59 | INFO    | OceanGo | Iter 3 self-play stats: B wins: 25.0% (12) | W wins: 75.0% (36) | Draws: 0 | Avg game len: 64.1
+2025-09-17 13:28:59 | INFO    | OceanGo | Iter 3 | start training | samples=8192, epochs=5, lr=1.0e-04
+2025-09-17 13:28:59 | INFO    | OceanGo | Iter 3 finished - avg_loss=4.0698 (p=3.9953, v=0.0745)
+2025-09-17 13:29:51 | INFO    | OceanGo | Worker 7 finished: moves=48, winner=White
+2025-09-17 13:29:52 | INFO    | OceanGo | Worker 2 finished: moves=53, winner=White
+2025-09-17 13:29:52 | INFO    | OceanGo | Final board state for Worker 2:
+   A B C D E F G H I
+1  X X O O O X X X .
+2  O . X X . O . X O
+3  X X X O X X O O O
+4  . O O . . X X X X
+5  O O O X X O O . .
+6  X O X O . O X X X
+7  . O X X X O X X O
+8  O . O O X X X X O
+9  O O . O . X X X .
+2025-09-17 13:29:52 | INFO    | OceanGo | Worker 9 finished: moves=42, winner=White
+2025-09-17 13:29:57 | INFO    | OceanGo | Worker 11 finished: moves=67, winner=White
+2025-09-17 13:29:59 | INFO    | OceanGo | Worker 3 finished: moves=57, winner=White
+2025-09-17 13:29:59 | INFO    | OceanGo | Worker 15 finished: moves=47, winner=White
+2025-09-17 13:30:00 | INFO    | OceanGo | Worker 8 finished: moves=52, winner=White
+2025-09-17 13:30:05 | INFO    | OceanGo | Worker 17 finished: moves=54, winner=White
+2025-09-17 13:30:13 | INFO    | OceanGo | Worker 16 finished: moves=57, winner=White
+2025-09-17 13:30:14 | INFO    | OceanGo | Worker 12 finished: moves=61, winner=White
+2025-09-17 13:30:14 | INFO    | OceanGo | Worker 6 finished: moves=68, winner=Black
+2025-09-17 13:30:17 | INFO    | OceanGo | Worker 5 finished: moves=75, winner=White
+2025-09-17 13:30:18 | INFO    | OceanGo | Worker 14 finished: moves=55, winner=White
+2025-09-17 13:30:18 | INFO    | OceanGo | Worker 19 finished: moves=65, winner=White
+2025-09-17 13:30:19 | INFO    | OceanGo | Worker 4 finished: moves=60, winner=White
+2025-09-17 13:30:20 | INFO    | OceanGo | Worker 18 finished: moves=63, winner=Black
+2025-09-17 13:30:26 | INFO    | OceanGo | Worker 10 finished: moves=72, winner=Black
+2025-09-17 13:30:29 | INFO    | OceanGo | Worker 1 finished: moves=69, winner=White
+2025-09-17 13:30:29 | INFO    | OceanGo | Final board state for Worker 1:
+   A B C D E F G H I
+1  X X X . O O O X .
+2  X X O O O O O X .
+3  X O O O O O X . X
+4  X . O X O O X X .
+5  X O X X X O O X O
+6  X . X X . X . X O
+7  X X X X O O . X O
+8  X X X O O O O X X
+9  O O O O . O O O .
+2025-09-17 13:30:30 | INFO    | OceanGo | Worker 13 finished: moves=77, winner=Black
+2025-09-17 13:30:30 | INFO    | OceanGo | Worker 0 finished: moves=71, winner=White
+2025-09-17 13:30:30 | INFO    | OceanGo | Final board state for Worker 0:
+   A B C D E F G H I
+1  . O . O . . O X .
+2  O . O O X X O O O
+3  O O O . O O X X O
+4  O O O X O O O . O
+5  X X O O O O O O X
+6  X X O O O O O O X
+7  O X X O O X O O X
+8  O X . X X X X X X
+9  . X X X X . X X .
+2025-09-17 13:30:33 | INFO    | OceanGo | Worker 22 finished: moves=45, winner=White
+2025-09-17 13:30:36 | INFO    | OceanGo | Worker 24 finished: moves=43, winner=White
+2025-09-17 13:30:41 | INFO    | OceanGo | Worker 26 finished: moves=47, winner=Black
+2025-09-17 13:30:56 | INFO    | OceanGo | Worker 20 finished: moves=69, winner=White
+2025-09-17 13:30:56 | INFO    | OceanGo | Worker 27 finished: moves=60, winner=White
+2025-09-17 13:31:00 | INFO    | OceanGo | Worker 21 finished: moves=65, winner=White
+2025-09-17 13:31:00 | INFO    | OceanGo | Worker 28 finished: moves=44, winner=White
+2025-09-17 13:31:03 | INFO    | OceanGo | Worker 31 finished: moves=52, winner=White
+2025-09-17 13:31:03 | INFO    | OceanGo | Worker 25 finished: moves=59, winner=Black
+2025-09-17 13:31:05 | INFO    | OceanGo | Worker 32 finished: moves=44, winner=White
+2025-09-17 13:31:11 | INFO    | OceanGo | Worker 39 finished: moves=53, winner=White
+2025-09-17 13:31:11 | INFO    | OceanGo | Worker 36 finished: moves=46, winner=White
+2025-09-17 13:31:11 | INFO    | OceanGo | Worker 29 finished: moves=56, winner=Black
+2025-09-17 13:31:13 | INFO    | OceanGo | Worker 30 finished: moves=55, winner=Black
+2025-09-17 13:31:13 | INFO    | OceanGo | Worker 40 finished: moves=50, winner=Black
+2025-09-17 13:31:17 | INFO    | OceanGo | Worker 23 finished: moves=67, winner=White
+2025-09-17 13:31:20 | INFO    | OceanGo | Worker 41 finished: moves=68, winner=White
+2025-09-17 13:31:22 | INFO    | OceanGo | Worker 35 finished: moves=66, winner=White
+2025-09-17 13:31:28 | INFO    | OceanGo | Worker 34 finished: moves=76, winner=White
+2025-09-17 13:31:28 | INFO    | OceanGo | Worker 33 finished: moves=66, winner=White
+2025-09-17 13:31:29 | INFO    | OceanGo | Worker 37 finished: moves=71, winner=Black
+2025-09-17 13:31:35 | INFO    | OceanGo | Worker 38 finished: moves=74, winner=White
+2025-09-17 13:31:37 | INFO    | OceanGo | Worker 43 finished: moves=64, winner=White
+2025-09-17 13:31:37 | INFO    | OceanGo | Worker 42 finished: moves=69, winner=White
+2025-09-17 13:31:39 | INFO    | OceanGo | Worker 45 finished: moves=58, winner=White
+2025-09-17 13:31:39 | INFO    | OceanGo | Worker 47 finished: moves=57, winner=White
+2025-09-17 13:31:40 | INFO    | OceanGo | Worker 46 finished: moves=69, winner=White
+2025-09-17 13:31:41 | INFO    | OceanGo | Worker 44 finished: moves=72, winner=Black
+2025-09-17 13:31:43 | INFO    | OceanGo | Iter 4 self-play stats: B wins: 22.9% (11) | W wins: 77.1% (37) | Draws: 0 | Avg game len: 60.0
+2025-09-17 13:31:43 | INFO    | OceanGo | Iter 4 | start training | samples=8192, epochs=5, lr=1.0e-04
+2025-09-17 13:31:44 | INFO    | OceanGo | Iter 4 finished - avg_loss=4.0388 (p=3.9639, v=0.0749)
