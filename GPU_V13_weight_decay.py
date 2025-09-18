@@ -47,18 +47,18 @@ class Config:
     grid: int = 50             # Pixel width of one cell in the GUI.
 
     # ── 3. Self-play schedule (how much data you generate) ────
-    n_iter: int = 100           # Outer training loops per run.
-    games_per_iter: int = 48   # Parallel self-play games each loop.
+    n_iter: int = 10           # Outer training loops per run.
+    games_per_iter: int = 60   # Parallel self-play games each loop.
 
     # ── 4. MCTS search depth & Hyperparameters ────────────────
     mcts_sims: int = 5_000                # Used in GUI for a very strong opponent.
-    mcts_sims_worker: int = 5_000         # Sims per move in self-play.
+    mcts_sims_worker: int = 15_000         # Sims per move in self-play.
     mcts_batch_size: int = 256            # Batch size for NN evals inside MCTS.
     mcts_c_puct: float = 1.25             # Exploration factor in PUCT.
     dirichlet_alpha: float = 0.1          # Noise for root node exploration.
     start_temp: float = 1.0               # Initial temperature for move selection.
     temp_decay_moves: int = 40            # Moves before temp -> 0 for exploitation.
-    min_moves_for_pass: int = 0           # Will be set dynamically after Config init.
+    min_moves_for_pass: int = 20           # Will be set dynamically after Config init.
     cleanup_moves: int = 18               # Extra moves played to resolve dead stones.
     cleanup_policy_temp: float = 0.5      # Temperature for cleanup move selection.
 
