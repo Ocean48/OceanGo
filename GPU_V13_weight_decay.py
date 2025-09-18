@@ -927,7 +927,7 @@ def main():
                 f"Draws: {draws} | Avg game len: {avg_moves:.1f}"
             )
 
-        if len(RB.data) > CFG.traina_batch:
+        if len(RB.data) > CFG.train_batch:
             train(net, RB.sample(CFG.train_sample_size), it)
             # Save the newly trained model for the next iteration of workers
             torch.save(raw_net.state_dict(), ckpt)
