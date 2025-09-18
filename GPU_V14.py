@@ -53,13 +53,20 @@ class Config:
 
     # ── 4. MCTS search depth & Hyperparameters ────────────────
     mcts_sims: int = 5_000 # Used in GUI for a very strong opponent.
-    mcts_sims_worker: int = 5_000 # Sims per move in self-play.
+    ## CHANGELOG: Doubled MCTS simulations during self-play. This gives the AI more
+    ## "thinking time" to find better moves and overcome the noisy signals that
+    ## can occur in early training, helping it learn more robust strategies.
+    mcts_sims_worker: int = 10_000 # Sims per move in self-play.
     mcts_batch_size: int = 256 # Batch size for NN evals inside MCTS.
     mcts_c_puct: float = 1.25 # Exploration factor in PUCT.
     dirichlet_alpha: float = 0.1 # Noise for root node exploration.
     start_temp: float = 1.0 # Initial temperature for move selection.
     temp_decay_moves: int = 40 # Moves before temp -> 0 for exploitation.
-    min_moves_for_pass: int = 0 # Will be set dynamically after Config init.
+    ## CHANGELOG: Re-instated a minimum number of moves before passing.
+    ## The AI learned to pass immediately to end the game, finding a loophole
+    ## in the territory scoring on a near-empty board. Forcing the first 15 moves
+    ## prevents this and encourages the AI to learn proper opening strategy.
+    min_moves_for_pass: int = 15 # Prevent passing in the opening.
     cleanup_moves: int = 18 # Extra moves played to resolve dead stones.
     cleanup_policy_temp: float = 0.5 # Temperature for cleanup move selection.
 
@@ -75,7 +82,6 @@ class Config:
     train_batch: int = 1024
     train_epochs: int = 5
     lr: float = 1e-4
-    ## CHANGELOG: Added weight decay to regularize the model and prevent pathological policies.
     weight_decay: float = 1e-4 # L2 regularization.
 
     # ── 8. Hardware toggles ───────────────────────────────────
@@ -101,7 +107,6 @@ tqdm.set_lock(multiprocessing.RLock())
 CFG = Config()
 if CFG.max_moves is None:
     CFG.max_moves = 2 * CFG.board_size * CFG.board_size # 2 × board area
-CFG.min_moves_for_pass = CFG.board_size * CFG.board_size // 2
 SCREEN = (CFG.board_size + 1) * CFG.grid
 
 device_gpu = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -251,7 +256,6 @@ def _territory_score(game: "GoGame") -> float:
                     if (cx, cy) in visited_in_group: continue
                     visited_in_group.add((cx, cy))
                     empties.append((cx, cy))
-                    ## CHANGELOG: Fixed bug in neighbor check loop. Was (-1,0) twice, missing (0,-1).
                     for dx, dy in ((1,0),(-1,0),(0,1),(0,-1)):
                         nx, ny = cx + dx, cy + dy
                         if 0 <= nx < bs and 0 <= ny < bs:
@@ -293,7 +297,6 @@ def _chinese_area(board: np.ndarray, komi: float = CFG.komi) -> float:
                     if (cx, cy) in visited_in_group: continue
                     visited_in_group.add((cx, cy))
                     empties.append((cx, cy))
-                    ## CHANGELOG: Fixed bug in neighbor check loop. Was (-1,0) twice, missing (0,-1).
                     for dx, dy in ((1,0),(-1,0),(0,1),(0,-1)):
                         nx, ny = cx + dx, cy + dy
                         if 0 <= nx < bs and 0 <= ny < bs:
@@ -579,9 +582,12 @@ def mcts(game: GoGame, net: PolicyValueNet, sims: int, temp: float = 1.0, add_no
     for _ in range(sims):
         leaf = select(root)
         if leaf.g.game_over():
-            scoring_game = _policy_guided_playout(leaf.g, net)
-            ## CHANGELOG: Switched self-play MCTS scoring to Chinese Area scoring.
-            score = scoring_game.get_score(use_territory_scoring=False)
+            scoring_game = leaf.g
+            ## CHANGELOG: Switched MCTS evaluation scoring to territory scoring.
+            ## This method is more robust to "dead" stones left on the board at the
+            ## end of a game, providing a more stable (less noisy) reward signal
+            ## for the AI during the early stages of training.
+            score = scoring_game.get_score(use_territory_scoring=True)
             winner = 0 if abs(score) < 1e-3 else (1 if score > 0 else 2)
             value = 0 if winner == 0 else (1 if winner == leaf.g.current_player else -1)
             backup(leaf, value)
@@ -653,12 +659,12 @@ def self_play_worker(args):
         w = 0
         final_game_state = game
     else:
-        # CRITICAL: Resolve life and death dynamically before final scoring.
-        final_game_state = _policy_guided_playout(game, net)
-        ## CHANGELOG: Switched self-play scoring to Chinese Area scoring.
-        ## This is more robust and prevents the AI from learning to fill its own territory,
-        ## as its own stones now count as points.
-        final_score = final_game_state.get_score(use_territory_scoring=False)
+        final_game_state = game
+        ## CHANGELOG: Switched final self-play game scoring to territory scoring.
+        ## This aligns the final reward with the MCTS evaluation, ensuring the AI
+        ## is trained on a consistent and more stable scoring system that is not
+        ## confused by dead stones left on the board.
+        final_score = final_game_state.get_score(use_territory_scoring=True)
         w = 0 if abs(final_score) < 1e-3 else (1 if final_score > 0 else 2)
 
     if rank == 0: moves_bar.close()
@@ -701,7 +707,6 @@ def train(net: PolicyValueNet, batch_data, it_idx):
         "Iter %d | start training | samples=%d, epochs=%d, lr=%.1e",
         it_idx, len(batch_data), CFG.train_epochs, CFG.lr,
     )
-    ## CHANGELOG: Added weight_decay to the optimizer for regularization.
     opt = optim.Adam(net.parameters(), lr=CFG.lr, weight_decay=CFG.weight_decay)
     scaler = torch.amp.GradScaler(enabled=(CFG.amp and device_gpu.type == 'cuda'))
     net.train()
@@ -907,3 +912,4 @@ def main():
 if __name__ == "__main__":
     multiprocessing.set_start_method("spawn", force=True)
     main()
+
