@@ -80,11 +80,16 @@ class GoGame:
         # 0=empty, 1=player1, 2=player2
         self.board = np.zeros((board_size, board_size), dtype=np.int32)
         self.current_player = 1
+        self.history = set()
+        self.history.add(hash(self.board.tobytes()))
+        self.passes_in_a_row = 0
 
     def copy(self):
         g = GoGame(self.board_size)
         g.board = self.board.copy()
         g.current_player = self.current_player
+        g.history = self.history.copy()
+        g.passes_in_a_row = self.passes_in_a_row
         return g
 
     def get_state_np(self):
@@ -94,20 +99,63 @@ class GoGame:
         self.current_player = 3 - self.current_player
 
     def is_valid_move(self, x, y):
+        # Pass move
+        if x == -1 and y == -1:
+            return True
         if x < 0 or x >= self.board_size or y < 0 or y >= self.board_size:
             return False
-        return (self.board[x, y] == 0)
+        if self.board[x, y] != 0:
+            return False
+        return self._try_move(x, y)
 
-    def is_suicide(self, x, y):
+    def _try_move(self, x, y):
+        temp_board = self.board.copy()
+        temp_board[x, y] = self.current_player
+        
+        # Remove captures
+        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            nx, ny = x+dx, y+dy
+            if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
+                if temp_board[nx, ny] == 3 - self.current_player:
+                    if not self._has_liberty((nx, ny), temp_board):
+                        self._remove_group((nx, ny), temp_board)
+        
+        # Check suicide
+        if not self._has_liberty((x, y), temp_board):
+            return False
+            
+        # Check Ko (positional superko)
+        board_hash = hash(temp_board.tobytes())
+        if board_hash in self.history:
+            return False
+            
+        return True
+
+    def make_move(self, x, y):
         if not self.is_valid_move(x, y):
             return False
-        temp = self.board.copy()
-        temp[x, y] = self.current_player
-        return not self._has_liberty((x, y), temp)
+            
+        if x == -1 and y == -1:
+            self.passes_in_a_row += 1
+        else:
+            self.passes_in_a_row = 0
+            self.board[x, y] = self.current_player
+            
+            # Remove captures
+            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                nx, ny = x+dx, y+dy
+                if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
+                    if self.board[nx, ny] == 3 - self.current_player:
+                        if not self._has_liberty((nx, ny), self.board):
+                            self._remove_group((nx, ny), self.board)
+            
+        self.switch_player()
+        self.history.add(hash(self.board.tobytes()))
+        return True
 
-    def _has_liberty(self, start, temp_board):
+    def _has_liberty(self, start, board_state):
         from collections import deque
-        color = temp_board[start[0], start[1]]
+        color = board_state[start[0], start[1]]
         visited = set()
         q = deque([start])
         while q:
@@ -117,70 +165,82 @@ class GoGame:
                 for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
                     nx, ny = cx+dx, cy+dy
                     if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
-                        if temp_board[nx, ny] == 0:
+                        if board_state[nx, ny] == 0:
                             return True
-                        if temp_board[nx, ny] == color and (nx, ny) not in visited:
+                        if board_state[nx, ny] == color and (nx, ny) not in visited:
                             q.append((nx, ny))
         return False
 
-    def make_move(self, x, y):
-        if self.is_valid_move(x, y) and not self.is_suicide(x, y):
-            self.board[x, y] = self.current_player
-            self.remove_captured_stones(3 - self.current_player)
-            self.switch_player()
-            return True
-        return False
-
-    def remove_captured_stones(self, color):
-        temp = self.board
-        visited = set()
-        captured_positions = []
-        for i in range(self.board_size):
-            for j in range(self.board_size):
-                if temp[i, j] == color and (i, j) not in visited:
-                    group, has_lib = self._find_group((i, j))
-                    visited |= group
-                    if not has_lib:
-                        captured_positions.extend(list(group))
-        for (x, y) in captured_positions:
-            self.board[x, y] = 0
-
-    def _find_group(self, start):
+    def _remove_group(self, start, board_state):
         from collections import deque
-        color = self.board[start[0], start[1]]
-        group = set()
-        has_lib = False
+        color = board_state[start[0], start[1]]
+        visited = set()
         q = deque([start])
         while q:
             cx, cy = q.pop()
-            if (cx, cy) not in group:
-                group.add((cx, cy))
+            if (cx, cy) not in visited:
+                visited.add((cx, cy))
+                board_state[cx, cy] = 0
                 for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
                     nx, ny = cx+dx, cy+dy
                     if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
-                        if self.board[nx, ny] == 0:
-                            has_lib = True
-                        elif self.board[nx, ny] == color and (nx, ny) not in group:
+                        if board_state[nx, ny] == color and (nx, ny) not in visited:
                             q.append((nx, ny))
-        return group, has_lib
 
     def get_legal_moves(self):
-        moves = []
+        moves = [(-1, -1)]  # Pass is always a legal move
         for x in range(self.board_size):
             for y in range(self.board_size):
-                if self.board[x, y] == 0 and not self.is_suicide(x, y):
+                if self.board[x, y] == 0 and self._try_move(x, y):
                     moves.append((x, y))
         return moves
 
     def is_game_over(self):
-        return len(self.get_legal_moves()) == 0
+        return self.passes_in_a_row >= 2 or len(self.get_legal_moves()) <= 1
 
     def get_winner(self):
+        # Chinese area scoring with Komi
         b_stones = np.count_nonzero(self.board == 1)
         w_stones = np.count_nonzero(self.board == 2)
-        if b_stones > w_stones:
+        b_terr = 0
+        w_terr = 0
+        visited = set()
+
+        for r in range(self.board_size):
+            for c in range(self.board_size):
+                if self.board[r, c] == 0 and (r, c) not in visited:
+                    from collections import deque
+                    q = deque([(r, c)])
+                    group = set([(r, c)])
+                    touches_black = False
+                    touches_white = False
+
+                    while q:
+                        cx, cy = q.pop()
+                        visited.add((cx, cy))
+                        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                            nx, ny = cx+dx, cy+dy
+                            if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
+                                if self.board[nx, ny] == 1:
+                                    touches_black = True
+                                elif self.board[nx, ny] == 2:
+                                    touches_white = True
+                                elif self.board[nx, ny] == 0 and (nx, ny) not in group:
+                                    group.add((nx, ny))
+                                    q.append((nx, ny))
+                    
+                    if touches_black and not touches_white:
+                        b_terr += len(group)
+                    elif touches_white and not touches_black:
+                        w_terr += len(group)
+
+        komi = 7.5
+        b_score = b_stones + b_terr
+        w_score = w_stones + w_terr + komi
+
+        if b_score > w_score:
             return 1
-        elif w_stones > b_stones:
+        elif w_score > b_score:
             return 2
         return 0
 
@@ -258,7 +318,12 @@ def nn_batch_evaluate(nodes, net):
         legal_moves = nd.unexpanded_moves
         board_s = nd.game_state.board_size
 
-        move_indices = [x*board_s + y for (x,y) in legal_moves]
+        move_indices = []
+        for (x,y) in legal_moves:
+            if x == -1 and y == -1:
+                move_indices.append(board_s * board_s)
+            else:
+                move_indices.append(x * board_s + y)
         selected_logits = [p_logits[idx] for idx in move_indices]
         if len(selected_logits) > 0:
             probs = softmax(np.array(selected_logits))
@@ -321,9 +386,12 @@ def self_play_one_game(net, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0):
         mcts_expand(root)
 
         pi_dict = mcts_run(root, net, n_mcts_sims, temp=temp)
-        pi_flat = np.zeros(board_size * board_size, dtype=np.float32)
+        pi_flat = np.zeros(board_size * board_size + 1, dtype=np.float32)
         for mv, p in pi_dict.items():
-            idx = mv[0]*board_size + mv[1]
+            if mv[0] == -1 and mv[1] == -1:
+                idx = board_size * board_size
+            else:
+                idx = mv[0]*board_size + mv[1]
             pi_flat[idx] = p
 
         if len(pi_dict) > 0:
@@ -413,7 +481,7 @@ def train_policy_value_net(net, data, batch_size=32, epochs=5, lr=1e-3):
 
             optimizer.zero_grad()
             out_p, out_v = net(inp)
-            out_p = out_p[:, :board_size*board_size]
+            out_p = out_p[:, :board_size*board_size + 1]
 
             logp = F.log_softmax(out_p, dim=1)
             policy_loss = -torch.sum(tgt_p * logp, dim=1).mean()
@@ -488,7 +556,8 @@ def run_interactive_game(net):
                     if 0 <= grid_x < BOARD_SIZE and 0 <= grid_y < BOARD_SIZE:
                         x,y = grid_x, grid_y
             if x is not None:
-                game.make_move(x,y)
+                if game.is_valid_move(x,y):
+                    game.make_move(x,y)
         else:
             # Player 2 = AI
             print("AI thinking...")
@@ -498,8 +567,11 @@ def run_interactive_game(net):
             pi_dict = mcts_run(root, net, n_simulations=50)
             if len(pi_dict) == 0:
                 print("AI has no moves, passing?")
+                game.make_move(-1, -1)
                 break
-            best_move = max(pi_dict.items(), key=lambda x: x[1])[0]
+            best_move = max(pi_dict.items(), key=lambda elem: elem[1])[0]
+            if best_move == (-1, -1):
+                print("AI passes!")
             game.make_move(*best_move)
 
 def main():
