@@ -17,6 +17,8 @@ import torch.optim as optim
 # ----------------------------------------
 # Global config
 # ----------------------------------------
+# OS_NAME is used for platform-specific optimizations. windows/linux
+OS_NAME = "windows"
 # The dimensions of the Go board (e.g., 9 for 9x9, 13 for 13x13, 19 for standard 19x19).
 BOARD_SIZE = 13
 # Pixel size of each grid square in the Pygame interactive UI.
@@ -524,9 +526,8 @@ def self_play_wrapper(board_size, n_mcts_sims, temp, game_idx, state_dict_cpu):
     local_net.eval()
     
     # Compile the PyTorch model for massive execution speed boosts (PyTorch 2.0+)
-    # Try to use in Linux environments with PyTorch 2.0+ and compatible GPUs for best performance
-    # if hasattr(torch, 'compile'):
-    #     local_net = torch.compile(local_net)
+    if OS_NAME == "linux" and hasattr(torch, 'compile'):
+        local_net = torch.compile(local_net)
     
     return self_play_one_game(local_net, board_size, n_mcts_sims, temp, game_idx)
 
