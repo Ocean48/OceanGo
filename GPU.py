@@ -5,6 +5,8 @@ import copy
 import time
 import sys
 import os
+import argparse
+import concurrent.futures
 import numpy as np
 import pygame
 import torch
@@ -15,10 +17,65 @@ import torch.optim as optim
 # ----------------------------------------
 # Global config
 # ----------------------------------------
+# The dimensions of the Go board (e.g., 9 for 9x9, 13 for 13x13, 19 for standard 19x19).
 BOARD_SIZE = 13
+# Pixel size of each grid square in the Pygame interactive UI.
 GRID_SIZE = 50
+# Total pixel dimension of the Pygame window.
 SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE
+# Automatically select GPU (CUDA) if available, otherwise fallback to CPU computation.
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# --- Hyperparameters ---
+# Self-Play / Training
+# Number of outer loop iterations (Self-play -> Train -> Save). Search convergence improves with higher iterations.
+N_ITER = 9
+# Number of parallel self-play games to play per iteration. Adjust based on your available CPU cores.
+N_GAMES_PER_ITER = 9
+# Number of MCTS simulations per move. Higher = stronger AI strategy, but slower execution (e.g. 500-1600+).
+N_MCTS_SIMS = 500
+# Number of board states to sample randomly from the replay buffer for each neural network training phase.
+TRAIN_SAMPLE_SIZE = 1000
+# Maximum number of historical moves to keep in memory to prevent model from overfitting to recent games.
+MAX_REPLAY_BUFFER_SIZE = 30000
+
+# MCTS Setup
+# Number of MCTS leaves to evaluate in parallel on the GPU. Higher = better GPU utilization during search.
+MCTS_BATCH_SIZE = 8
+# Exploration constant for PUCT formulation. Higher = explores more unvisited tree nodes prior to exploiting.
+C_PUCT = 1.0
+# Shape of Dirichlet noise. AlphaZero uses 0.03 for 19x19 (Tweak higher like 0.1-0.3 for smaller board dimensions).
+DIRICHLET_ALPHA = 0.03
+# Ratio of the Dirichlet noise added to the root node (0.25 means 25% noise / 75% real model policy).
+DIRICHLET_EPSILON = 0.25
+
+# Neural Network Setup
+# Number of convolutional filters per ResNet block (AlphaZero used 256; use 64-128 for consumer GPUs).
+RESNET_CHANNELS = 64
+# Number of Residual blocks in the network (e.g., 5 for quick training, 19 to 39 for immense strategic depth).
+RESNET_BLOCKS = 5
+# Minibatch size fed to the GPU during neural network backpropagation.
+TRAIN_BATCH_SIZE = 32
+# Number of passes over the training sample batch per iteration.
+TRAIN_EPOCHS = 5
+# Gradient descent learning rate (Adam optimizer step size).
+LEARNING_RATE = 1e-3
+# Number of parallel worker threads used by the MCTS algorithm.
+PARALLEL_THREADS = min(8, max(int(os.cpu_count() or 1), 1))
+
+sys_cores = os.cpu_count() or 1
+# Suggest using all but 1-2 cores to keep the system responsive, but cap at CPU limits.
+suggested_cores = max(1, sys_cores - 2) if sys_cores > 2 else sys_cores
+
+print("========================================")
+print("OceanGo Initializing...")
+print(f"Processing Computing Device: {device.type.upper()}")
+if device.type == 'cuda':
+    print(f"GPU Name: {torch.cuda.get_device_name(0)}")
+print(f"System CPU Cores Available: {sys_cores}")
+print(f"Algorithm Using: {PARALLEL_THREADS} Cores")
+print(f"Suggested Optimal Cores: {suggested_cores}")
+print("========================================\n")
 
 # ----------------------------------------
 # Logging
@@ -27,7 +84,15 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(script_dir)
 log_start = time.strftime("%Y-%m-%d %H:%M:%S")
 logging.basicConfig(filename=f"{script_dir}/logs.log", level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-logging.info(f"\n\nStarting log at {log_start}")
+logging.info(f"\n\n{'='*40}")
+logging.info(f"Starting OceanGo log at {log_start}")
+logging.info(f"Processing Computing Device: {device.type.upper()}")
+if device.type == 'cuda':
+    logging.info(f"GPU Name: {torch.cuda.get_device_name(0)}")
+logging.info(f"System CPU Cores Available: {sys_cores}")
+logging.info(f"Algorithm Using: {PARALLEL_THREADS} Cores")
+logging.info(f"Suggested Optimal Cores: {suggested_cores}")
+logging.info(f"{'='*40}")
 
 # ====================================================
 #             ResNet Blocks
@@ -52,7 +117,7 @@ class ResBlock(nn.Module):
 #             Policy-Value Network (ResNet)
 # ====================================================
 class PolicyValueNet(nn.Module):
-    def __init__(self, board_size=BOARD_SIZE, num_channels=64, num_res_blocks=5):
+    def __init__(self, board_size=BOARD_SIZE, num_channels=RESNET_CHANNELS, num_res_blocks=RESNET_BLOCKS):
         super().__init__()
         self.board_size = board_size
 
@@ -327,7 +392,7 @@ def mcts_select(root: "NN_MCTS_Node"):
         best_child = None
         
         for mv, ch in node.children.items():
-            c_puct = 1.0
+            c_puct = C_PUCT
             total_n = ch.N + ch.virtual_loss
             U = c_puct * ch.P * math.sqrt(node.N + node.virtual_loss) / (1 + total_n)
             Q_val = (ch.W - ch.virtual_loss * 1.0) / total_n if total_n > 0 else 0
@@ -441,11 +506,13 @@ def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0, batch_size=8
 # ====================================================
 #        Self-Play: Generating Training Data
 # ====================================================
-def self_play_one_game(net, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0):
+def self_play_one_game(net, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0, game_idx=1):
     game = GoGame(board_size)
     data = []  # store (nn_input, player, pi, z)
     move_count = 0
 
+    logging.info(f"  Starting new self-play game {game_idx}.")
+    
     while not game.is_game_over():
         current_temp = 1.0 if move_count < 30 else 1e-3
 
@@ -456,11 +523,11 @@ def self_play_one_game(net, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0):
         # Add Dirichlet noise to the root node for exploration
         moves = list(root.children.keys())
         if len(moves) > 0:
-            noise = np.random.dirichlet([0.03] * len(moves))
+            noise = np.random.dirichlet([DIRICHLET_ALPHA] * len(moves))
             for i, mv in enumerate(moves):
-                root.children[mv].P = 0.75 * root.children[mv].P + 0.25 * noise[i]
+                root.children[mv].P = (1.0 - DIRICHLET_EPSILON) * root.children[mv].P + DIRICHLET_EPSILON * noise[i]
 
-        pi_dict = mcts_run(root, net, n_mcts_sims, temp=current_temp, batch_size=8)
+        pi_dict = mcts_run(root, net, n_mcts_sims, temp=current_temp, batch_size=MCTS_BATCH_SIZE)
         pi_flat = np.zeros(board_size * board_size + 1, dtype=np.float32)
         for mv, p in pi_dict.items():
             if mv[0] == -1 and mv[1] == -1:
@@ -481,8 +548,12 @@ def self_play_one_game(net, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0):
 
         game.make_move(*selected_move)
         move_count += 1
+        
+        logging.info(f"Game {game_idx} Move {move_count}: Player {current_player} -> {selected_move}")
 
     winner = game.get_winner()
+    logging.info(f"Game {game_idx} over. Winner: Player {winner} after {move_count} moves.")
+    
     for i, (nn_input_idx, player, pi_flat) in enumerate(data):
         if winner == 0:
             z = 0
@@ -528,7 +599,6 @@ def get_equi_data(play_data):
 #  Replay Buffer (Stores data across iterations)
 # ====================================================
 REPLAY_BUFFER = []
-MAX_REPLAY_BUFFER_SIZE = 30000  # Example limit
 
 def add_to_replay_buffer(new_data):
     global REPLAY_BUFFER
@@ -548,7 +618,7 @@ def sample_from_replay_buffer(sample_size=1024):
 # ====================================================
 #          Training the Network
 # ====================================================
-def train_policy_value_net(net, data, batch_size=32, epochs=5, lr=1e-3):
+def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_EPOCHS, lr=LEARNING_RATE):
     """
     data: list of (nn_input, current_player, pi_flat, z)
     We'll do:
@@ -665,40 +735,60 @@ def run_interactive_game(net):
             if x is not None:
                 if game.is_valid_move(x,y):
                     game.make_move(x,y)
+                    print(f"Human played: ({x}, {y})")
+                    logging.info(f"Interactive Game: Human played ({x}, {y})")
         else:
             # Player 2 = AI
-            print("AI thinking...")
+            print("AI thinking...", end="", flush=True)
+            logging.info("Interactive Game: AI thinking...")
             root = NN_MCTS_Node(game.copy())
             nn_batch_evaluate([root], net)
             mcts_expand(root)
-            pi_dict = mcts_run(root, net, n_simulations=50, batch_size=8)
+            pi_dict = mcts_run(root, net, n_simulations=N_MCTS_SIMS, batch_size=MCTS_BATCH_SIZE)
             if len(pi_dict) == 0:
-                print("AI has no moves, passing?")
+                print(" AI has no moves, passing?")
+                logging.info("Interactive Game: AI forced pass (no moves).")
                 game.make_move(-1, -1)
                 break
             best_move = max(pi_dict.items(), key=lambda elem: elem[1])[0]
             if best_move == (-1, -1):
-                print("AI passes!")
+                print(" AI passes!")
+                logging.info("Interactive Game: AI voluntarily passed.")
+            else:
+                print(f" AI plays: {best_move}")
+                logging.info(f"Interactive Game: AI played: {best_move}")
             game.make_move(*best_move)
 
 def main():
+    parser = argparse.ArgumentParser(description="OceanGo - AlphaZero styled Go AI")
+    parser.add_argument("--model", type=str, default="", help="Path to specific model to load (e.g. checkpoints/policy_value_net_iter_5.pth)")
+    parser.add_argument("--play", action="store_true", help="Play interactively immediately without training")
+    args = parser.parse_args()
+
     # 1) Create or load network
     net = PolicyValueNet(board_size=BOARD_SIZE).to(device)
-    if os.path.isfile("policy_value_net.pth"):
-        print("Loading existing model parameters...")
-        logging.info("Loading existing model parameters from policy_value_net.pth")
-        net.load_state_dict(torch.load("policy_value_net.pth", map_location=device))
+    
+    # Decide which model to load from parameters or fallback to latest.
+    load_path = args.model if args.model else "policy_value_net.pth"
+    
+    if os.path.isfile(load_path):
+        print(f"Loading existing model parameters from {load_path}...")
+        logging.info(f"Loading existing model parameters from {load_path}")
+        net.load_state_dict(torch.load(load_path, map_location=device))
     else:
         print("No existing model found. Starting from scratch.")
         logging.info("No existing model found. Starting a fresh model.")
     net.eval()
 
-    # 2) Self-play / 3) Train 
-    N_ITER = 9            # number of self-play iterations
-    N_GAMES_PER_ITER = 9  # how many self-play games each iteration
-    N_MCTS_SIMS = 500     # MCTS simulations
-    TRAIN_SAMPLE_SIZE = 1000
+    # If the user just wants to play against the loaded model, boot up the UI and exit the script after the game.
+    if args.play:
+        print("Starting interactive game...")
+        run_interactive_game(net)
+        return
 
+    os.makedirs("checkpoints", exist_ok=True)
+
+    # 2) Self-play / 3) Train 
     total_start_time = time.time()
 
     for iteration in range(N_ITER):
@@ -706,24 +796,35 @@ def main():
         print(f"==== Self-Play iteration {iteration+1} ====")
         logging.info(f"==== Self-Play iteration {iteration+1} ====")
 
-        # Gather data from self-play
+        # Gather data from self-play (Parallelized)
         iteration_data = []
-        for g in range(N_GAMES_PER_ITER):
-            game_start_time = time.time()
-            print(f"  Self-play game {g+1}...")
-            logging.info(f"  Starting self-play game {g+1} in iteration {iteration+1}...")
+        print(f"  Starting {N_GAMES_PER_ITER} self-play games simultaneously (Parallel Execution)...")
+        logging.info(f"  Starting {N_GAMES_PER_ITER} parallel games in iteration {iteration+1}...")
 
-            game_data = self_play_one_game(net,
-                                           board_size=BOARD_SIZE,
-                                           n_mcts_sims=N_MCTS_SIMS,
-                                           temp=1.0)
-            game_data = get_equi_data(game_data)
-            iteration_data.extend(game_data)
+        # Dispatch parallel self-play games based on global PARALLEL_THREADS configuration
+        print(f"  Allocating {PARALLEL_THREADS} worker threads for parallel execution.")
+        logging.info(f"  Allocating {PARALLEL_THREADS} worker threads for parallel MCTS execution.")
 
-            game_end_time = time.time()
-            game_duration = game_end_time - game_start_time
-            print(f"  Finished game {g+1}, collected {len(game_data)} states in {game_duration:.2f} sec.")
-            logging.info(f"  Finished game {g+1}, collected {len(game_data)} states in {game_duration:.2f} sec.")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=PARALLEL_THREADS) as executor:
+            # Dispatch all self-play games to concurrent workers
+            futures = {
+                executor.submit(self_play_one_game, net, BOARD_SIZE, N_MCTS_SIMS, 1.0, g+1): g+1
+                for g in range(N_GAMES_PER_ITER)
+            }
+            
+            for future in concurrent.futures.as_completed(futures):
+                idx = futures[future]
+                game_start_time = time.time()
+                game_data = future.result()
+                
+                # Augment the generated path logic
+                augmented_data = get_equi_data(game_data)
+                iteration_data.extend(augmented_data)
+                
+                game_end_time = time.time()
+                game_duration = game_end_time - game_start_time
+                print(f"  --> Finished game {idx}/{N_GAMES_PER_ITER}, appended {len(augmented_data)} states.")
+                logging.info(f"  Finished game {idx}/{N_GAMES_PER_ITER}, appended {len(augmented_data)} states.")
 
         # Add iteration_data to global replay buffer
         add_to_replay_buffer(iteration_data)
@@ -737,16 +838,17 @@ def main():
 
         if len(train_data) > 0:
             train_start_time = time.time()
-            train_policy_value_net(net, train_data, batch_size=32, epochs=5, lr=1e-3)
+            train_policy_value_net(net, train_data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_EPOCHS, lr=LEARNING_RATE)
             train_end_time = time.time()
             logging.info(f"Training completed in {train_end_time - train_start_time:.2f} seconds.")
         else:
             print("No training data available yet.")
 
-        # 4) Save the net (overwrites old file)
+        # 4) Save the net (overwrites latest file and logs a checkpoint)
         torch.save(net.state_dict(), "policy_value_net.pth")
-        print("Model saved.\n")
-        logging.info(f"Model saved at iteration {iteration+1}.")
+        torch.save(net.state_dict(), f"checkpoints/policy_value_net_iter_{iteration+1}.pth")
+        print("Model state saved sequentially.")
+        logging.info(f"Model saved at iteration {iteration+1} to checkpoint folder and base 'policy_value_net.pth'.")
 
         iteration_end_time = time.time()
         iteration_duration = iteration_end_time - iteration_start_time
