@@ -30,41 +30,64 @@ logging.basicConfig(filename=f"{script_dir}/logs.log", level=logging.INFO, forma
 logging.info(f"\n\nStarting log at {log_start}")
 
 # ====================================================
-#             Policy-Value Network
+#             ResNet Blocks
+# ====================================================
+class ResBlock(nn.Module):
+    def __init__(self, num_channels):
+        super().__init__()
+        self.conv1 = nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(num_channels)
+        self.conv2 = nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(num_channels)
+
+    def forward(self, x):
+        res = x
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = self.bn2(self.conv2(x))
+        x += res
+        x = F.relu(x)
+        return x
+
+# ====================================================
+#             Policy-Value Network (ResNet)
 # ====================================================
 class PolicyValueNet(nn.Module):
-    def __init__(self, board_size=BOARD_SIZE):
+    def __init__(self, board_size=BOARD_SIZE, num_channels=64, num_res_blocks=5):
         super().__init__()
         self.board_size = board_size
 
-        # A small ConvNet
-        self.conv1 = nn.Conv2d(2, 16, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
+        # Initial Convolutional Block
+        self.conv_in = nn.Conv2d(17, num_channels, kernel_size=3, padding=1, bias=False)
+        self.bn_in = nn.BatchNorm2d(num_channels)
+
+        # Residual Blocks
+        self.res_blocks = nn.ModuleList([ResBlock(num_channels) for _ in range(num_res_blocks)])
 
         # Policy head
-        self.policy_conv = nn.Conv2d(32, 2, kernel_size=1)
-        self.policy_fc = nn.Linear(2 * board_size * board_size,
-                                   board_size*board_size+1)
+        self.policy_conv = nn.Conv2d(num_channels, 2, kernel_size=1, bias=False)
+        self.policy_bn = nn.BatchNorm2d(2)
+        self.policy_fc = nn.Linear(2 * board_size * board_size, board_size * board_size + 1)
 
         # Value head
-        self.value_conv = nn.Conv2d(32, 1, kernel_size=1)
-        self.value_fc1 = nn.Linear(board_size*board_size, 64)
+        self.value_conv = nn.Conv2d(num_channels, 1, kernel_size=1, bias=False)
+        self.value_bn = nn.BatchNorm2d(1)
+        self.value_fc1 = nn.Linear(board_size * board_size, 64)
         self.value_fc2 = nn.Linear(64, 1)
 
     def forward(self, x):
         # x: (batch_size, 2, board_size, board_size)
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
+        x = F.relu(self.bn_in(self.conv_in(x)))
+        
+        for block in self.res_blocks:
+            x = block(x)
 
         # Policy
-        p = F.relu(self.policy_conv(x))
+        p = F.relu(self.policy_bn(self.policy_conv(x)))
         p = p.view(p.size(0), -1)
         p = self.policy_fc(p)
 
         # Value
-        v = F.relu(self.value_conv(x))
+        v = F.relu(self.value_bn(self.value_conv(x)))
         v = v.view(v.size(0), -1)
         v = F.relu(self.value_fc1(v))
         v = torch.tanh(self.value_fc2(v))  # in [-1, 1]
@@ -83,6 +106,8 @@ class GoGame:
         self.history = set()
         self.history.add(hash(self.board.tobytes()))
         self.passes_in_a_row = 0
+        self.history_states = [np.zeros((board_size, board_size), dtype=np.int32) for _ in range(8)]
+        self.history_states[0] = self.board.copy()
 
     def copy(self):
         g = GoGame(self.board_size)
@@ -90,10 +115,21 @@ class GoGame:
         g.current_player = self.current_player
         g.history = self.history.copy()
         g.passes_in_a_row = self.passes_in_a_row
+        g.history_states = [b.copy() for b in self.history_states]
         return g
 
     def get_state_np(self):
         return (self.board.copy(), self.current_player)
+
+    def get_nn_input(self):
+        """ Returns 17 x board_size x board_size numpy array """
+        planes = np.zeros((17, self.board_size, self.board_size), dtype=np.float32)
+        for i in range(8):
+            board_i = self.history_states[i]
+            planes[i] = (board_i == self.current_player).astype(np.float32)
+            planes[i+8] = (board_i == (3 - self.current_player)).astype(np.float32)
+        planes[16] = 1.0 if self.current_player == 1 else 0.0
+        return planes
 
     def switch_player(self):
         self.current_player = 3 - self.current_player
@@ -151,6 +187,8 @@ class GoGame:
             
         self.switch_player()
         self.history.add(hash(self.board.tobytes()))
+        self.history_states.insert(0, self.board.copy())
+        self.history_states.pop()
         return True
 
     def _has_liberty(self, start, board_state):
@@ -245,16 +283,11 @@ class GoGame:
         return 0
 
 # ====================================================
-#  Helper: Convert boards to PyTorch Tensor
+#  Helper: Convert inputs to PyTorch Tensor
 # ====================================================
-def boards_to_tensor(batch_of_boards):
-    arr_list = []
-    for (board_np, cplayer) in batch_of_boards:
-        c0 = (board_np == cplayer).astype(np.float32)
-        c1 = (board_np == (3 - cplayer)).astype(np.float32)
-        stacked = np.stack([c0, c1], axis=0)
-        arr_list.append(stacked)
-    arr_np = np.stack(arr_list, axis=0)
+def boards_to_tensor(batch_of_inputs):
+    # batch_of_inputs is a list of 17-channel planes
+    arr_np = np.stack(batch_of_inputs, axis=0)
     t = torch.from_numpy(arr_np).to(device)
     return t
 
@@ -277,33 +310,39 @@ class NN_MCTS_Node:
         self.N = 0
         self.W = 0
         self.Q = 0
+        self.virtual_loss = 0  # for parallel batched MCTS
         self.P = 0  
         self.policy_map = {}  
         self.value = 0        
 
 def mcts_select(root: "NN_MCTS_Node"):
     node = root
+    search_path = [node]
     while True:
         if len(node.unexpanded_moves) > 0:
-            return node
+            return node, search_path
         if not node.children:
-            return node
+            return node, search_path
         best_score = -999999
         best_child = None
+        
         for mv, ch in node.children.items():
             c_puct = 1.0
-            U = c_puct * ch.P * math.sqrt(node.N) / (1 + ch.N)
-            score = ch.Q + U
+            total_n = ch.N + ch.virtual_loss
+            U = c_puct * ch.P * math.sqrt(node.N + node.virtual_loss) / (1 + total_n)
+            Q_val = (ch.W - ch.virtual_loss * 1.0) / total_n if total_n > 0 else 0
+            score = Q_val + U
             if score > best_score:
                 best_score = score
                 best_child = ch
+        
         node = best_child
+        search_path.append(node)
 
 def nn_batch_evaluate(nodes, net):
     batch = []
     for nd in nodes:
-        board_np, cplayer = nd.game_state.get_state_np()
-        batch.append((board_np, cplayer))
+        batch.append(nd.game_state.get_nn_input())
 
     input_tensor = boards_to_tensor(batch)
     with torch.no_grad():
@@ -343,20 +382,46 @@ def mcts_expand(node: "NN_MCTS_Node"):
         node.children[mv] = child_node
     node.unexpanded_moves = []
 
-def mcts_backup(node: "NN_MCTS_Node", value):
-    while node is not None:
+def apply_virtual_loss(search_path, loss=1.0):
+    for node in search_path:
+        node.virtual_loss += loss
+
+def remove_virtual_loss(search_path, loss=1.0):
+    for node in search_path:
+        node.virtual_loss -= loss
+
+def mcts_backup(search_path, value):
+    # Backward pass for the current search path modifying true W/N 
+    for node in reversed(search_path):
         node.N += 1
         node.W += value
         node.Q = node.W / node.N
         value = -value
-        node = node.parent
 
-def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0):
-    for _ in range(n_simulations):
-        leaf = mcts_select(root)
-        nn_batch_evaluate([leaf], net)
-        mcts_expand(leaf)
-        mcts_backup(leaf, leaf.value)
+def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0, batch_size=8):
+    sims = 0
+    while sims < n_simulations:
+        # Collect a batch of leaves concurrently and apply virtual loss so paths diverge
+        batch_paths = []
+        batch_leaves = []
+        
+        current_batch_size = min(batch_size, n_simulations - sims)
+        for _ in range(current_batch_size):
+            leaf, path = mcts_select(root)
+            apply_virtual_loss(path)
+            batch_paths.append(path)
+            batch_leaves.append(leaf)
+
+        # Batch evaluate neural network logic on completely unique paths together 
+        nn_batch_evaluate(batch_leaves, net)
+
+        # Backpropagate actual values and remove virtual loss
+        for path, leaf in zip(batch_paths, batch_leaves):
+            mcts_expand(leaf)
+            remove_virtual_loss(path)
+            mcts_backup(path, leaf.value)
+            
+        sims += current_batch_size
 
     move_N = [(mv, ch.N) for mv, ch in root.children.items()]
     if not move_N:
@@ -378,14 +443,24 @@ def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0):
 # ====================================================
 def self_play_one_game(net, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0):
     game = GoGame(board_size)
-    data = []  # store (board, player, pi, z)
+    data = []  # store (nn_input, player, pi, z)
+    move_count = 0
 
     while not game.is_game_over():
+        current_temp = 1.0 if move_count < 30 else 1e-3
+
         root = NN_MCTS_Node(game.copy())
         nn_batch_evaluate([root], net)
         mcts_expand(root)
 
-        pi_dict = mcts_run(root, net, n_mcts_sims, temp=temp)
+        # Add Dirichlet noise to the root node for exploration
+        moves = list(root.children.keys())
+        if len(moves) > 0:
+            noise = np.random.dirichlet([0.03] * len(moves))
+            for i, mv in enumerate(moves):
+                root.children[mv].P = 0.75 * root.children[mv].P + 0.25 * noise[i]
+
+        pi_dict = mcts_run(root, net, n_mcts_sims, temp=current_temp, batch_size=8)
         pi_flat = np.zeros(board_size * board_size + 1, dtype=np.float32)
         for mv, p in pi_dict.items():
             if mv[0] == -1 and mv[1] == -1:
@@ -400,22 +475,54 @@ def self_play_one_game(net, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0):
         else:
             break
 
-        board_cp = game.board.copy()
+        nn_input = game.get_nn_input()
         current_player = game.current_player
-        data.append((board_cp, current_player, pi_flat))
+        data.append((nn_input, current_player, pi_flat))
 
         game.make_move(*selected_move)
+        move_count += 1
 
     winner = game.get_winner()
-    for i, (board_cp, player, pi_flat) in enumerate(data):
+    for i, (nn_input_idx, player, pi_flat) in enumerate(data):
         if winner == 0:
             z = 0
         elif winner == player:
             z = 1
         else:
             z = -1
-        data[i] = (board_cp, player, pi_flat, z)
+        data[i] = (nn_input_idx, player, pi_flat, z)
     return data
+
+def get_equi_data(play_data):
+    """
+    Augment data using all 8 symmetries of the board (rotations and reflections).
+    play_data: list of (nn_input, current_player, pi_flat, z)
+    """
+    extend_data = []
+    for (state, cplayer, pi, z) in play_data:
+        board_size = state.shape[1]
+        # Reshape the policy vector (excluding the pass move) back to the board dimensions
+        pi_board = np.reshape(pi[:-1], (board_size, board_size))
+        pi_pass = pi[-1]
+        
+        for i in [1, 2, 3, 4]:
+            # Rotate counter-clockwise (over H and W axes for 3D state)
+            equi_state = np.rot90(state, k=i, axes=(1, 2))
+            equi_pi_board = np.rot90(pi_board, k=i)
+            equi_pi = np.zeros_like(pi)
+            equi_pi[:-1] = equi_pi_board.flatten()
+            equi_pi[-1] = pi_pass
+            extend_data.append((equi_state.copy(), cplayer, equi_pi.copy(), z))
+            
+            # Flip horizontally (across the W axis for 3D state)
+            equi_state_flip = np.flip(equi_state, axis=2)
+            equi_pi_board_flip = np.fliplr(equi_pi_board)
+            equi_pi_flip = np.zeros_like(pi)
+            equi_pi_flip[:-1] = equi_pi_board_flip.flatten()
+            equi_pi_flip[-1] = pi_pass
+            extend_data.append((equi_state_flip.copy(), cplayer, equi_pi_flip.copy(), z))
+            
+    return extend_data
 
 # ====================================================
 #  Replay Buffer (Stores data across iterations)
@@ -443,7 +550,7 @@ def sample_from_replay_buffer(sample_size=1024):
 # ====================================================
 def train_policy_value_net(net, data, batch_size=32, epochs=5, lr=1e-3):
     """
-    data: list of (board_np, current_player, pi_flat, z)
+    data: list of (nn_input, current_player, pi_flat, z)
     We'll do:
       - policy loss (cross entropy w.r.t. pi_flat)
       - value loss (MSE vs. z)
@@ -451,13 +558,13 @@ def train_policy_value_net(net, data, batch_size=32, epochs=5, lr=1e-3):
     optimizer = optim.Adam(net.parameters(), lr=lr)
     net.train()
 
-    X_boards = []
+    X_inputs = []
     policy_targets = []
     value_targets = []
     board_size = net.board_size
 
-    for (board_np, cplayer, pi_flat, z) in data:
-        X_boards.append((board_np, cplayer))
+    for (nn_inp, cplayer, pi_flat, z) in data:
+        X_inputs.append(nn_inp)
         policy_targets.append(pi_flat)
         value_targets.append(z)
 
@@ -474,8 +581,8 @@ def train_policy_value_net(net, data, batch_size=32, epochs=5, lr=1e-3):
             end_idx = start_idx + batch_size
             excerpt = indices[start_idx:end_idx]
 
-            batch_boards = [X_boards[i] for i in excerpt]
-            inp = boards_to_tensor(batch_boards)
+            batch_inputs = [X_inputs[i] for i in excerpt]
+            inp = boards_to_tensor(batch_inputs)
             tgt_p = torch.from_numpy(policy_targets[excerpt]).to(device)
             tgt_v = torch.from_numpy(value_targets[excerpt]).to(device)
 
@@ -564,7 +671,7 @@ def run_interactive_game(net):
             root = NN_MCTS_Node(game.copy())
             nn_batch_evaluate([root], net)
             mcts_expand(root)
-            pi_dict = mcts_run(root, net, n_simulations=50)
+            pi_dict = mcts_run(root, net, n_simulations=50, batch_size=8)
             if len(pi_dict) == 0:
                 print("AI has no moves, passing?")
                 game.make_move(-1, -1)
@@ -610,6 +717,7 @@ def main():
                                            board_size=BOARD_SIZE,
                                            n_mcts_sims=N_MCTS_SIMS,
                                            temp=1.0)
+            game_data = get_equi_data(game_data)
             iteration_data.extend(game_data)
 
             game_end_time = time.time()
