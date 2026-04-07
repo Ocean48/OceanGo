@@ -23,15 +23,18 @@ BOARD_SIZE = 13
 GRID_SIZE = 50
 # Total pixel dimension of the Pygame window.
 SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE
+# PyTorch Performance Tweaks for 5000-series Tensor Cores
+torch.set_float32_matmul_precision('high')
+
 # Automatically select GPU (CUDA) if available, otherwise fallback to CPU computation.
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # --- Hyperparameters ---
 # Self-Play / Training
 # Number of outer loop iterations (Self-play -> Train -> Save). Search convergence improves with higher iterations.
-N_ITER = 9
+N_ITER = 8
 # Number of parallel self-play games to play per iteration. Adjust based on your available CPU cores.
-N_GAMES_PER_ITER = 9
+N_GAMES_PER_ITER = 500
 # Number of MCTS simulations per move. Higher = stronger AI strategy, but slower execution (e.g. 500-1600+).
 N_MCTS_SIMS = 500
 # Number of board states to sample randomly from the replay buffer for each neural network training phase.
@@ -41,7 +44,7 @@ MAX_REPLAY_BUFFER_SIZE = 30000
 
 # MCTS Setup
 # Number of MCTS leaves to evaluate in parallel on the GPU. Higher = better GPU utilization during search.
-MCTS_BATCH_SIZE = 8
+MCTS_BATCH_SIZE = 256
 # Exploration constant for PUCT formulation. Higher = explores more unvisited tree nodes prior to exploiting.
 C_PUCT = 1.0
 # Shape of Dirichlet noise. AlphaZero uses 0.03 for 19x19 (Tweak higher like 0.1-0.3 for smaller board dimensions).
@@ -51,17 +54,17 @@ DIRICHLET_EPSILON = 0.25
 
 # Neural Network Setup
 # Number of convolutional filters per ResNet block (AlphaZero used 256; use 64-128 for consumer GPUs).
-RESNET_CHANNELS = 64
+RESNET_CHANNELS = 256
 # Number of Residual blocks in the network (e.g., 5 for quick training, 19 to 39 for immense strategic depth).
-RESNET_BLOCKS = 5
+RESNET_BLOCKS = 19
 # Minibatch size fed to the GPU during neural network backpropagation.
-TRAIN_BATCH_SIZE = 32
+TRAIN_BATCH_SIZE = 128
 # Number of passes over the training sample batch per iteration.
 TRAIN_EPOCHS = 5
 # Gradient descent learning rate (Adam optimizer step size).
 LEARNING_RATE = 1e-3
 # Number of parallel worker threads used by the MCTS algorithm.
-PARALLEL_THREADS = min(8, max(int(os.cpu_count() or 1), 1))
+PARALLEL_THREADS = min(8, int(os.cpu_count() or 1) - 2)
 
 sys_cores = os.cpu_count() or 1
 # Suggest using all but 1-2 cores to keep the system responsive, but cap at CPU limits.
@@ -473,20 +476,25 @@ def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0, batch_size=8
         current_batch_size = min(batch_size, n_simulations - sims)
         for _ in range(current_batch_size):
             leaf, path = mcts_select(root)
+            if leaf in batch_leaves:
+                break # Prevents evaluating the exact same leaf redundantly in one batch (which causes hangs).
             apply_virtual_loss(path)
             batch_paths.append(path)
             batch_leaves.append(leaf)
 
         # Batch evaluate neural network logic on completely unique paths together 
-        nn_batch_evaluate(batch_leaves, net)
+        if batch_leaves:
+            nn_batch_evaluate(batch_leaves, net)
 
-        # Backpropagate actual values and remove virtual loss
-        for path, leaf in zip(batch_paths, batch_leaves):
-            mcts_expand(leaf)
-            remove_virtual_loss(path)
-            mcts_backup(path, leaf.value)
-            
-        sims += current_batch_size
+            # Backpropagate actual values and remove virtual loss
+            for path, leaf in zip(batch_paths, batch_leaves):
+                mcts_expand(leaf)
+                remove_virtual_loss(path)
+                mcts_backup(path, leaf.value)
+                
+            sims += len(batch_leaves)
+        else:
+            sims += 1
 
     move_N = [(mv, ch.N) for mv, ch in root.children.items()]
     if not move_N:
@@ -506,6 +514,22 @@ def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0, batch_size=8
 # ====================================================
 #        Self-Play: Generating Training Data
 # ====================================================
+def self_play_wrapper(board_size, n_mcts_sims, temp, game_idx, state_dict_cpu):
+    # Initialize child process GPU network to bypass Global Interpreter Lock
+    if device.type == 'cuda':
+        torch.cuda.set_device(0) 
+    
+    local_net = PolicyValueNet(board_size=board_size, num_channels=RESNET_CHANNELS, num_res_blocks=RESNET_BLOCKS).to(device)
+    local_net.load_state_dict(state_dict_cpu)
+    local_net.eval()
+    
+    # Compile the PyTorch model for massive execution speed boosts (PyTorch 2.0+)
+    # Try to use in Linux environments with PyTorch 2.0+ and compatible GPUs for best performance
+    # if hasattr(torch, 'compile'):
+    #     local_net = torch.compile(local_net)
+    
+    return self_play_one_game(local_net, board_size, n_mcts_sims, temp, game_idx)
+
 def self_play_one_game(net, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0, game_idx=1):
     game = GoGame(board_size)
     data = []  # store (nn_input, player, pi, z)
@@ -801,30 +825,40 @@ def main():
         print(f"  Starting {N_GAMES_PER_ITER} self-play games simultaneously (Parallel Execution)...")
         logging.info(f"  Starting {N_GAMES_PER_ITER} parallel games in iteration {iteration+1}...")
 
-        # Dispatch parallel self-play games based on global PARALLEL_THREADS configuration
-        print(f"  Allocating {PARALLEL_THREADS} worker threads for parallel execution.")
-        logging.info(f"  Allocating {PARALLEL_THREADS} worker threads for parallel MCTS execution.")
+        # Dispatch parallel self-play games explicitly via multi-processing (Bypasses Python GIL)
+        print(f"  Allocating {PARALLEL_THREADS} parallel processing cores (Bypassing Python GIL).")
+        logging.info(f"  Allocating {PARALLEL_THREADS} parallel processing cores.")
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=PARALLEL_THREADS) as executor:
+        state_dict_cpu = {k: v.cpu() for k, v in net.state_dict().items()}
+
+        with concurrent.futures.ProcessPoolExecutor(max_workers=PARALLEL_THREADS) as executor:
             # Dispatch all self-play games to concurrent workers
             futures = {
-                executor.submit(self_play_one_game, net, BOARD_SIZE, N_MCTS_SIMS, 1.0, g+1): g+1
+                executor.submit(self_play_wrapper, BOARD_SIZE, N_MCTS_SIMS, 1.0, g+1, state_dict_cpu): g+1
                 for g in range(N_GAMES_PER_ITER)
             }
             
+            completed_games = 0
+            iteration_games_start_time = time.time()
+
             for future in concurrent.futures.as_completed(futures):
                 idx = futures[future]
-                game_start_time = time.time()
                 game_data = future.result()
                 
                 # Augment the generated path logic
                 augmented_data = get_equi_data(game_data)
                 iteration_data.extend(augmented_data)
                 
-                game_end_time = time.time()
-                game_duration = game_end_time - game_start_time
-                print(f"  --> Finished game {idx}/{N_GAMES_PER_ITER}, appended {len(augmented_data)} states.")
-                logging.info(f"  Finished game {idx}/{N_GAMES_PER_ITER}, appended {len(augmented_data)} states.")
+                completed_games += 1
+                elapsed = time.time() - iteration_games_start_time
+                avg_time = elapsed / completed_games
+                remaining = N_GAMES_PER_ITER - completed_games
+                eta_seconds = int(avg_time * remaining)
+                
+                eta_str = time.strftime('%Hh %Mm %Ss', time.gmtime(eta_seconds))
+                
+                print(f"  --> Finished game {completed_games}/{N_GAMES_PER_ITER} (Game ID: {idx}) | Appended {len(augmented_data)} states | ETA: {eta_str}")
+                logging.info(f"  Finished game {completed_games}/{N_GAMES_PER_ITER} (Game ID: {idx}) | ETA: {eta_str}")
 
         # Add iteration_data to global replay buffer
         add_to_replay_buffer(iteration_data)
