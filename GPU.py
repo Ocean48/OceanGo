@@ -7,6 +7,9 @@ import sys
 import os
 import argparse
 import concurrent.futures
+import multiprocessing as mp
+import threading
+import queue
 import numpy as np
 import pygame
 import torch
@@ -20,9 +23,9 @@ import torch.optim as optim
 # OS_NAME is used for platform-specific optimizations. windows/linux
 OS_NAME = "windows"
 # The dimensions of the Go board (e.g., 9 for 9x9, 13 for 13x13, 19 for standard 19x19).
-BOARD_SIZE = 13
+BOARD_SIZE = 9
 # Pixel size of each grid square in the Pygame interactive UI.
-GRID_SIZE = 50
+GRID_SIZE = 40
 # Total pixel dimension of the Pygame window.
 SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE
 # PyTorch Performance Tweaks for 5000-series Tensor Cores
@@ -34,15 +37,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # --- Hyperparameters ---
 # Self-Play / Training
 # Number of outer loop iterations (Self-play -> Train -> Save). Search convergence improves with higher iterations.
-N_ITER = 8
+N_ITER = 50
 # Number of parallel self-play games to play per iteration. Adjust based on your available CPU cores.
 N_GAMES_PER_ITER = 500
 # Number of MCTS simulations per move. Higher = stronger AI strategy, but slower execution (e.g. 500-1600+).
-N_MCTS_SIMS = 500
+N_MCTS_SIMS = 800
 # Number of board states to sample randomly from the replay buffer for each neural network training phase.
-TRAIN_SAMPLE_SIZE = 1000
+TRAIN_SAMPLE_SIZE = 250000
 # Maximum number of historical moves to keep in memory to prevent model from overfitting to recent games.
-MAX_REPLAY_BUFFER_SIZE = 30000
+MAX_REPLAY_BUFFER_SIZE = 500000
 
 # MCTS Setup
 # Number of MCTS leaves to evaluate in parallel on the GPU. Higher = better GPU utilization during search.
@@ -63,10 +66,10 @@ RESNET_BLOCKS = 19
 TRAIN_BATCH_SIZE = 128
 # Number of passes over the training sample batch per iteration.
 TRAIN_EPOCHS = 5
-# Gradient descent learning rate (Adam optimizer step size).
-LEARNING_RATE = 1e-3
+# Gradient descent learning rate (SGD step size).
+LEARNING_RATE = 0.01
 # Number of parallel worker threads used by the MCTS algorithm.
-PARALLEL_THREADS = min(8, int(os.cpu_count() or 1) - 2)
+PARALLEL_THREADS = min(14, int(os.cpu_count() or 1) - 2)
 
 sys_cores = os.cpu_count() or 1
 # Suggest using all but 1-2 cores to keep the system responsive, but cap at CPU limits.
@@ -144,11 +147,11 @@ class PolicyValueNet(nn.Module):
         # Value head
         self.value_conv = nn.Conv2d(num_channels, 1, kernel_size=1, bias=False)
         self.value_bn = nn.BatchNorm2d(1)
-        self.value_fc1 = nn.Linear(board_size * board_size, 64)
-        self.value_fc2 = nn.Linear(64, 1)
+        self.value_fc1 = nn.Linear(board_size * board_size, 256)
+        self.value_fc2 = nn.Linear(256, 1)
 
     def forward(self, x):
-        # x: (batch_size, 2, board_size, board_size)
+        # x: (batch_size, 17, board_size, board_size)
         x = F.relu(self.bn_in(self.conv_in(x)))
         
         for block in self.res_blocks:
@@ -177,7 +180,7 @@ class GoGame:
         self.board = np.zeros((board_size, board_size), dtype=np.int32)
         self.current_player = 1
         self.history = set()
-        self.history.add(hash(self.board.tobytes()))
+        self.history.add(self.board.tobytes())
         self.passes_in_a_row = 0
         self.history_states = [np.zeros((board_size, board_size), dtype=np.int32) for _ in range(8)]
         self.history_states[0] = self.board.copy()
@@ -234,7 +237,7 @@ class GoGame:
             return False
             
         # Check Ko (positional superko)
-        board_hash = hash(temp_board.tobytes())
+        board_hash = temp_board.tobytes()
         if board_hash in self.history:
             return False
             
@@ -259,7 +262,7 @@ class GoGame:
                             self._remove_group((nx, ny), self.board)
             
         self.switch_player()
-        self.history.add(hash(self.board.tobytes()))
+        self.history.add(self.board.tobytes())
         self.history_states.insert(0, self.board.copy())
         self.history_states.pop()
         return True
@@ -393,7 +396,14 @@ def mcts_select(root: "NN_MCTS_Node"):
     search_path = [node]
     while True:
         if len(node.unexpanded_moves) > 0:
-            return node, search_path
+            mv_idx = random.randrange(len(node.unexpanded_moves))
+            mv = node.unexpanded_moves.pop(mv_idx)
+            ng = node.game_state.copy()
+            ng.make_move(*mv)
+            child_node = NN_MCTS_Node(ng, parent=node, move=mv)
+            node.children[mv] = child_node
+            search_path.append(child_node)
+            return child_node, search_path
         if not node.children:
             return node, search_path
         best_score = -999999
@@ -412,16 +422,20 @@ def mcts_select(root: "NN_MCTS_Node"):
         node = best_child
         search_path.append(node)
 
-def nn_batch_evaluate(nodes, net):
+def nn_batch_evaluate(nodes, net=None, worker_id=None, req_queue=None, res_queue=None):
     batch = []
     for nd in nodes:
         batch.append(nd.game_state.get_nn_input())
 
-    input_tensor = boards_to_tensor(batch)
-    with torch.no_grad():
-        policy_logits, value_out = net(input_tensor)
-    policy_logits = policy_logits.cpu().numpy()
-    value_out = value_out.squeeze(1).cpu().numpy()
+    if net is not None:
+        input_tensor = boards_to_tensor(batch)
+        with torch.no_grad():
+            policy_logits, value_out = net(input_tensor)
+        policy_logits = policy_logits.cpu().numpy()
+        value_out = value_out.squeeze(1).cpu().numpy()
+    else:
+        req_queue.put((worker_id, batch))
+        policy_logits, value_out = res_queue.get()
 
     for i, nd in enumerate(nodes):
         val = value_out[i]
@@ -471,7 +485,7 @@ def mcts_backup(search_path, value):
         node.Q = node.W / node.N
         value = -value
 
-def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0, batch_size=8):
+def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0, batch_size=8, worker_id=None, req_queue=None, res_queue=None):
     sims = 0
     while sims < n_simulations:
         # Collect a batch of leaves concurrently and apply virtual loss so paths diverge
@@ -489,7 +503,7 @@ def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0, batch_size=8
 
         # Batch evaluate neural network logic on completely unique paths together 
         if batch_leaves:
-            nn_batch_evaluate(batch_leaves, net)
+            nn_batch_evaluate(batch_leaves, net=net, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
 
             # Backpropagate actual values and remove virtual loss
             for path, leaf in zip(batch_paths, batch_leaves):
@@ -519,33 +533,68 @@ def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0, batch_size=8
 # ====================================================
 #        Self-Play: Generating Training Data
 # ====================================================
-def self_play_wrapper(board_size, n_mcts_sims, temp, game_idx, state_dict_cpu):
-    # Initialize child process GPU network to bypass Global Interpreter Lock
-    if device.type == 'cuda':
-        torch.cuda.set_device(0) 
-    
-    local_net = PolicyValueNet(board_size=board_size, num_channels=RESNET_CHANNELS, num_res_blocks=RESNET_BLOCKS).to(device)
-    local_net.load_state_dict(state_dict_cpu)
-    local_net.eval()
-    
-    # Compile the PyTorch model for massive execution speed boosts (PyTorch 2.0+)
-    if OS_NAME == "linux" and hasattr(torch, 'compile'):
-        local_net = torch.compile(local_net)
-    
-    return self_play_one_game(local_net, board_size, n_mcts_sims, temp, game_idx)
 
-def self_play_one_game(net, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0, game_idx=1):
+def gpu_server_thread(net, req_queue, res_queues, total_workers):
+    active_workers = total_workers
+    while active_workers > 0:
+        requests = []
+        try:
+            req = req_queue.get(timeout=0.1)
+            if req == "DONE":
+                active_workers -= 1
+                continue
+            requests.append(req)
+            while len(requests) < 512:
+                try:
+                    req = req_queue.get_nowait()
+                    if req == "DONE":
+                        active_workers -= 1
+                        continue
+                    requests.append(req)
+                except queue.Empty:
+                    break
+        except queue.Empty:
+            continue
+            
+        if requests:
+            all_inputs = []
+            for w_id, inputs in requests:
+                all_inputs.extend(inputs)
+                
+            input_tensor = boards_to_tensor(all_inputs)
+            with torch.no_grad():
+                policy_logits, value_out = net(input_tensor)
+            policy_logits = policy_logits.cpu().numpy()
+            value_out = value_out.squeeze(1).cpu().numpy()
+            
+            offset = 0
+            for w_id, inputs in requests:
+                n = len(inputs)
+                p = policy_logits[offset:offset+n]
+                v = value_out[offset:offset+n]
+                res_queues[w_id].put((p, v))
+                offset += n
+
+def self_play_wrapper(board_size, n_mcts_sims, temp, worker_id, num_games, req_queue, res_queue, progress_queue):
+    data = []
+    for g in range(num_games):
+        game_data = self_play_one_game(net=None, board_size=board_size, n_mcts_sims=n_mcts_sims, temp=temp, game_idx=g+1, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
+        data.extend(game_data)
+        progress_queue.put(1)
+    return data
+
+def self_play_one_game(net=None, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0, game_idx=1, worker_id=None, req_queue=None, res_queue=None):
     game = GoGame(board_size)
     data = []  # store (nn_input, player, pi, z)
     move_count = 0
 
-    logging.info(f"  Starting new self-play game {game_idx}.")
+    logging.info(f"  Starting new self-play game {game_idx} on worker {worker_id}.")
     
     while not game.is_game_over():
         current_temp = 1.0 if move_count < 30 else 1e-3
 
         root = NN_MCTS_Node(game.copy())
-        nn_batch_evaluate([root], net)
+        nn_batch_evaluate([root], net=net, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
         mcts_expand(root)
 
         # Add Dirichlet noise to the root node for exploration
@@ -555,7 +604,7 @@ def self_play_one_game(net, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0, gam
             for i, mv in enumerate(moves):
                 root.children[mv].P = (1.0 - DIRICHLET_EPSILON) * root.children[mv].P + DIRICHLET_EPSILON * noise[i]
 
-        pi_dict = mcts_run(root, net, n_mcts_sims, temp=current_temp, batch_size=MCTS_BATCH_SIZE)
+        pi_dict = mcts_run(root, net, n_mcts_sims, temp=current_temp, batch_size=MCTS_BATCH_SIZE, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
         pi_flat = np.zeros(board_size * board_size + 1, dtype=np.float32)
         for mv, p in pi_dict.items():
             if mv[0] == -1 and mv[1] == -1:
@@ -653,7 +702,7 @@ def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_
       - policy loss (cross entropy w.r.t. pi_flat)
       - value loss (MSE vs. z)
     """
-    optimizer = optim.Adam(net.parameters(), lr=lr)
+    optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
     net.train()
 
     X_inputs = []
@@ -671,11 +720,12 @@ def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_
 
     n_samples = len(data)
     indices = np.arange(n_samples)
+    total_batches = (n_samples + batch_size - 1) // batch_size
 
     for ep in range(epochs):
         np.random.shuffle(indices)
         batch_losses = []
-        for start_idx in range(0, n_samples, batch_size):
+        for batch_idx, start_idx in enumerate(range(0, n_samples, batch_size)):
             end_idx = start_idx + batch_size
             excerpt = indices[start_idx:end_idx]
 
@@ -698,7 +748,12 @@ def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_
             optimizer.step()
             batch_losses.append(loss.item())
 
-        print(f"Epoch {ep+1}/{epochs}, Loss={np.mean(batch_losses):.4f}")
+            # Print live progress in the terminal
+            if (batch_idx + 1) % 50 == 0 or (batch_idx + 1) == total_batches:
+                avg_recent_loss = np.mean(batch_losses[-50:])
+                print(f"  Epoch {ep+1}/{epochs} | Batch {batch_idx+1}/{total_batches} | Recent Loss: {avg_recent_loss:.4f}", end="\r")
+
+        print(f"\nEpoch {ep+1}/{epochs} Completed | Overall Avg Loss={np.mean(batch_losses):.4f}")
         logging.info(f"Epoch {ep+1}/{epochs}, Loss={np.mean(batch_losses):.4f}")
 
     net.eval()
@@ -713,9 +768,11 @@ def run_interactive_game(net):
 
     game = GoGame(BOARD_SIZE)
     clock = pygame.time.Clock()
+    last_move = None
 
-    def draw_board(screen, g: GoGame):
-        screen.fill((255, 255, 255))
+    def draw_board(screen, g: GoGame, last_mv):
+        # Wood board color
+        screen.fill((220, 179, 92))
         for i in range(1, BOARD_SIZE + 1):
             pygame.draw.line(screen, (0,0,0),
                              (i*GRID_SIZE, GRID_SIZE),
@@ -723,6 +780,17 @@ def run_interactive_game(net):
             pygame.draw.line(screen, (0,0,0),
                              (GRID_SIZE, i*GRID_SIZE),
                              (SCREEN_SIZE - GRID_SIZE, i*GRID_SIZE), 2)
+                             
+        # Draw star points (Hoshi) for 19x19 board
+        if BOARD_SIZE == 19:
+            star_points = [(3, 3), (3, 9), (3, 15),
+                           (9, 3), (9, 9), (9, 15),
+                           (15, 3), (15, 9), (15, 15)]
+            for sx, sy in star_points:
+                px = (sy + 1) * GRID_SIZE
+                py = (sx + 1) * GRID_SIZE
+                pygame.draw.circle(screen, (0,0,0), (px, py), 4)
+
         for x in range(BOARD_SIZE):
             for y in range(BOARD_SIZE):
                 cell = g.board[x,y]
@@ -731,7 +799,16 @@ def run_interactive_game(net):
                 if cell == 1:
                     pygame.draw.circle(screen, (0,0,0), (cx,cy), GRID_SIZE//2 - 5)
                 elif cell == 2:
-                    pygame.draw.circle(screen, (200,200,200), (cx,cy), GRID_SIZE//2 - 5)
+                    pygame.draw.circle(screen, (255,255,255), (cx,cy), GRID_SIZE//2 - 5)
+                    pygame.draw.circle(screen, (0,0,0), (cx,cy), GRID_SIZE//2 - 5, 1) # Outline for white
+                    
+        # Highlight last move
+        if last_mv and last_mv != (-1, -1):
+            lx, ly = last_mv
+            cx = (ly+1)*GRID_SIZE
+            cy = (lx+1)*GRID_SIZE
+            pygame.draw.circle(screen, (255, 0, 0), (cx,cy), 4)
+            
         pygame.display.flip()
 
     while True:
@@ -744,7 +821,7 @@ def run_interactive_game(net):
             pygame.quit()
             sys.exit()
 
-        draw_board(screen, game)
+        draw_board(screen, game, last_move)
         clock.tick(15)
 
         # Player 1 = human
@@ -754,6 +831,9 @@ def run_interactive_game(net):
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_p:
+                        x, y = -1, -1 # Pass
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     px, py = event.pos
                     grid_x = round((py/GRID_SIZE) - 1)
@@ -763,8 +843,13 @@ def run_interactive_game(net):
             if x is not None:
                 if game.is_valid_move(x,y):
                     game.make_move(x,y)
-                    print(f"Human played: ({x}, {y})")
-                    logging.info(f"Interactive Game: Human played ({x}, {y})")
+                    last_move = (x, y)
+                    if (x, y) == (-1, -1):
+                        print("Human passed.")
+                        logging.info("Interactive Game: Human passed.")
+                    else:
+                        print(f"Human played: ({x}, {y})")
+                        logging.info(f"Interactive Game: Human played ({x}, {y})")
         else:
             # Player 2 = AI
             print("AI thinking...", end="", flush=True)
@@ -786,6 +871,7 @@ def run_interactive_game(net):
                 print(f" AI plays: {best_move}")
                 logging.info(f"Interactive Game: AI played: {best_move}")
             game.make_move(*best_move)
+            last_move = best_move
 
 def main():
     parser = argparse.ArgumentParser(description="OceanGo - AlphaZero styled Go AI")
@@ -830,39 +916,55 @@ def main():
         logging.info(f"  Starting {N_GAMES_PER_ITER} parallel games in iteration {iteration+1}...")
 
         # Dispatch parallel self-play games explicitly via multi-processing (Bypasses Python GIL)
-        print(f"  Allocating {PARALLEL_THREADS} parallel processing cores (Bypassing Python GIL).")
-        logging.info(f"  Allocating {PARALLEL_THREADS} parallel processing cores.")
+        print(f"  Allocating {PARALLEL_THREADS} parallel processing cores (Central GPU Queue Mode).")
+        logging.info(f"  Allocating {PARALLEL_THREADS} parallel processing cores (Central GPU Queue Mode).")
 
-        state_dict_cpu = {k: v.cpu() for k, v in net.state_dict().items()}
+        mp_manager = mp.Manager()
+        req_queue = mp_manager.Queue()
+        res_queues = [mp_manager.Queue() for _ in range(PARALLEL_THREADS)]
+        progress_queue = mp_manager.Queue()
+        
+        gpu_thread = threading.Thread(target=gpu_server_thread, args=(net, req_queue, res_queues, PARALLEL_THREADS))
+        gpu_thread.start()
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=PARALLEL_THREADS) as executor:
-            # Dispatch all self-play games to concurrent workers
-            futures = {
-                executor.submit(self_play_wrapper, BOARD_SIZE, N_MCTS_SIMS, 1.0, g+1, state_dict_cpu): g+1
-                for g in range(N_GAMES_PER_ITER)
-            }
+            futures = []
+            games_per_worker = max(1, N_GAMES_PER_ITER // PARALLEL_THREADS)
+            
+            for w_id in range(PARALLEL_THREADS):
+                num_games = games_per_worker
+                if w_id == PARALLEL_THREADS - 1:
+                    num_games = N_GAMES_PER_ITER - games_per_worker * (PARALLEL_THREADS - 1)
+                
+                if num_games > 0:
+                    f = executor.submit(self_play_wrapper, BOARD_SIZE, N_MCTS_SIMS, 1.0, w_id, num_games, req_queue, res_queues[w_id], progress_queue)
+                    futures.append(f)
             
             completed_games = 0
             iteration_games_start_time = time.time()
-
-            for future in concurrent.futures.as_completed(futures):
-                idx = futures[future]
+            
+            # Progress reporting loop
+            while completed_games < N_GAMES_PER_ITER:
+                try:
+                    progress_queue.get(timeout=1.0)
+                    completed_games += 1
+                    elapsed = time.time() - iteration_games_start_time
+                    avg_time = elapsed / completed_games
+                    remaining = N_GAMES_PER_ITER - completed_games
+                    eta_seconds = int(avg_time * remaining)
+                    eta_str = time.strftime('%Hh %Mm %Ss', time.gmtime(eta_seconds))
+                    print(f"  --> Finished game {completed_games}/{N_GAMES_PER_ITER} | ETA: {eta_str}")
+                    logging.info(f"  Finished game {completed_games}/{N_GAMES_PER_ITER} | ETA: {eta_str}")
+                except queue.Empty:
+                    pass
+            
+            for future in futures:
                 game_data = future.result()
-                
-                # Augment the generated path logic
                 augmented_data = get_equi_data(game_data)
                 iteration_data.extend(augmented_data)
-                
-                completed_games += 1
-                elapsed = time.time() - iteration_games_start_time
-                avg_time = elapsed / completed_games
-                remaining = N_GAMES_PER_ITER - completed_games
-                eta_seconds = int(avg_time * remaining)
-                
-                eta_str = time.strftime('%Hh %Mm %Ss', time.gmtime(eta_seconds))
-                
-                print(f"  --> Finished game {completed_games}/{N_GAMES_PER_ITER} (Game ID: {idx}) | Appended {len(augmented_data)} states | ETA: {eta_str}")
-                logging.info(f"  Finished game {completed_games}/{N_GAMES_PER_ITER} (Game ID: {idx}) | ETA: {eta_str}")
+                req_queue.put("DONE")
+
+        gpu_thread.join()
 
         # Add iteration_data to global replay buffer
         add_to_replay_buffer(iteration_data)
