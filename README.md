@@ -24,37 +24,63 @@ The theoretical backbone of this engine replicates modern reinforcement learning
 * **Interactive Pygame UI**: Features a classic wooden Go board aesthetic, last-move highlight indicators, and manual turn passing (via the `P` key) for human vs. AI matches.
 * **Rigorous Go Environment**: Fully implemented underlying rules engine dictating liberties, chained captures, positional superko, pass detection, and accurate Chinese area scoring incorporating Komi.
 
-## Extensibility & Hardware Scaling
-As a degree research project, OceanGo serves as a highly modular foundation. By default, the environment is configured to train on a **9x9 board**, which shrinks the search space enough to allow a single consumer CPU (e.g., AMD Ryzen 5700X) and GPU (e.g., RTX 5060 Ti) to achieve robust tactical play within just a few hours of self-play training. 
+## Cross-Platform Hardware Scaling
+OceanGo runs on both **macOS** and **Windows 11**:
+* **macOS (Apple Silicon M1/M2/M3/M4)**: Accelerates neural network inference and SGD backpropagation using PyTorch's Metal Performance Shaders (MPS) backend.
+* **Windows 11 (NVIDIA GPU)**: Supports NVIDIA CUDA acceleration (e.g. RTX 30/40/50 series) with FP32 Tensor Core optimizations.
+* **CPU Mode**: Gracefully falls back to CPU if no discrete or integrated accelerator is detected.
 
-It is fully intended to be extended in the future. Potential extensions include scaling the `BOARD_SIZE` variable back up to the standard 19x19 board (which is supported natively by the architecture), building distributed data-generation pipelines to offload self-play across multiple machines, or rewriting the MCTS node traversal engine into C++ for rapid localized tree expansion.
+By default, the environment is configured to train on a **9x9 board**, which shrinks the search space enough to allow a single consumer computer to achieve robust tactical play within just a few hours of self-play training. The architecture also natively supports 13x13 or standard 19x19 board dimensions.
 
-## Quick Start / How to Run
+## Quick Start / Setup
 
-### 0. Requirements
-Install the required dependencies using pip:
+### 1. Environment Setup
+
+#### On macOS
 ```bash
+# 1. Create and activate venv (Python 3.8 – 3.14+ supported)
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 2. Install dependencies (PyTorch includes Apple Silicon MPS support by default)
 pip install -r requirements.txt
+
+# 3. Test hardware accelerator
+python t.py
 ```
 
-OceanGo allows you to train the AI network via self-play or play interactively against an existing model.
+#### On Windows 11
+```cmd
+rem 1. Create and activate venv
+python -m venv .venv
+.venv\Scripts\activate
 
-### 1. Training the AI
-To start the AlphaZero self-play and training loop from scratch (or continue from an existing `policy_value_net.pth` model on disk):
-```bash
-python GPU.py
+rem 2. Install PyTorch with CUDA 12.1 (for NVIDIA GPUs) and dependencies
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements.txt
+
+rem 3. Test hardware accelerator
+python t.py
 ```
-This command spins up parallel processes to generate self-play data, evaluates positions, and begins training the ResNet.
+*(Automated setup scripts are also included: run `./setup_venv.sh` on macOS or `setup_venv.bat` on Windows 11).*
 
 ### 2. Playing Against the AI
-To skip training and immediately play a game on the interactive Pygame board against the latest model:
+To immediately play a game on the interactive Pygame board against the latest model:
 ```bash
-python GPU.py --play
+python OceanGo.py --play
 ```
-- Click on the board intersections to place your stones.
+*(Note: `python GPU.py --play` also works as a backwards-compatible alias).*
+- Click on board intersections to place stones.
 - Press **`P`** on your keyboard to pass your turn.
-- To play against a specific historical snapshot, use the `--model` flag:
-  `python GPU.py --model checkpoints/policy_value_net_iter_3.pth --play`
+- To play against a specific historical snapshot:
+  `python OceanGo.py --model checkpoints/policy_value_net_iter_3.pth --play`
+
+### 3. Training the AI
+To start the AlphaZero self-play and training loop from scratch (or continue from an existing `policy_value_net.pth` model on disk):
+```bash
+python OceanGo.py
+```
+This command spins up parallel processes to generate self-play data, evaluates positions, and begins training the ResNet.
 
 ---
 *Developed for the University of Windsor Computer Science Program.*

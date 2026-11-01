@@ -1,567 +1,1026 @@
-import random
-import numpy as np
+import logging
 import math
+import random
 import copy
-import multiprocessing
 import time
-import datetime
-import pygame
 import sys
+import os
+import argparse
+import concurrent.futures
+import multiprocessing as mp
+import threading
+import queue
+import platform
+import numpy as np
+import pygame
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 
-BOARD_SIZE = 13
-ITERATIONS = 50000
-PROCESSES_NUM = 16
+# ----------------------------------------
+# Global config
+# ----------------------------------------
+# Detect operating system dynamically: "windows", "darwin" (macOS), or "linux"
+OS_NAME = platform.system().lower()
 
-GRID_SIZE = 50 # Adjust based on screen size
-SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE 
+# The dimensions of the Go board (e.g., 9 for 9x9, 13 for 13x13, 19 for standard 19x19).
+BOARD_SIZE = 9
+# Pixel size of each grid square in the Pygame interactive UI.
+GRID_SIZE = 40
+# Total pixel dimension of the Pygame window.
+SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE
 
+# Cross-platform hardware acceleration:
+# 1. CUDA (NVIDIA GPU on Windows / Linux)
+# 2. MPS (Metal Performance Shaders on Apple Silicon macOS)
+# 3. CPU fallback
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+    torch.set_float32_matmul_precision('high')
+    device_name = torch.cuda.get_device_name(0)
+elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+    device = torch.device("mps")
+    device_name = f"Apple Silicon Metal / MPS ({platform.machine()})"
+else:
+    device = torch.device("cpu")
+    device_name = f"CPU ({platform.machine()})"
 
-# The `GoGame` class represents a game of Go, providing methods for making moves, checking move
-# validity, capturing stones, determining game over conditions, and getting the winner.
+# --- Hyperparameters ---
+# Self-Play / Training
+# Number of outer loop iterations (Self-play -> Train -> Save). Search convergence improves with higher iterations.
+N_ITER = 50
+# Number of parallel self-play games to play per iteration. Adjust based on your available CPU cores.
+N_GAMES_PER_ITER = 500
+# Number of MCTS simulations per move. Higher = stronger AI strategy, but slower execution (e.g. 500-1600+).
+N_MCTS_SIMS = 800
+# Number of board states to sample randomly from the replay buffer for each neural network training phase.
+TRAIN_SAMPLE_SIZE = 250000
+# Maximum number of historical moves to keep in memory to prevent model from overfitting to recent games.
+MAX_REPLAY_BUFFER_SIZE = 500000
+
+# MCTS Setup
+# Number of MCTS leaves to evaluate in parallel on the GPU. Higher = better GPU utilization during search.
+MCTS_BATCH_SIZE = 256
+# Exploration constant for PUCT formulation. Higher = explores more unvisited tree nodes prior to exploiting.
+C_PUCT = 1.0
+# Shape of Dirichlet noise. AlphaZero uses 0.03 for 19x19 (Tweak higher like 0.1-0.3 for smaller board dimensions).
+DIRICHLET_ALPHA = 0.03
+# Ratio of the Dirichlet noise added to the root node (0.25 means 25% noise / 75% real model policy).
+DIRICHLET_EPSILON = 0.25
+
+# Neural Network Setup
+# Number of convolutional filters per ResNet block (AlphaZero used 256; use 64-128 for consumer GPUs).
+RESNET_CHANNELS = 256
+# Number of Residual blocks in the network (e.g., 5 for quick training, 19 to 39 for immense strategic depth).
+RESNET_BLOCKS = 19
+# Minibatch size fed to the GPU during neural network backpropagation.
+TRAIN_BATCH_SIZE = 128
+# Number of passes over the training sample batch per iteration.
+TRAIN_EPOCHS = 5
+# Gradient descent learning rate (SGD step size).
+LEARNING_RATE = 0.01
+
+# Multi-core allocation (safe across low or high CPU core counts)
+sys_cores = os.cpu_count() or 1
+suggested_cores = max(1, sys_cores - 2) if sys_cores > 2 else sys_cores
+PARALLEL_THREADS = min(14, suggested_cores)
+
+def init_environment():
+    """Initializes logging and displays system runtime details (called once from main)."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    log_start = time.strftime("%Y-%m-%d %H:%M:%S")
+    log_filename_time = time.strftime("%Y%m%d_%H%M%S")
+    log_file_path = os.path.join(script_dir, f"logs_{log_filename_time}.log")
+
+    logging.basicConfig(
+        filename=log_file_path,
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+    print("========================================")
+    print("OceanGo Initializing...")
+    print(f"OS Platform: {platform.system()} ({platform.machine()})")
+    print(f"Processing Computing Device: {device.type.upper()}")
+    print(f"Device Details: {device_name}")
+    print(f"System CPU Cores Available: {sys_cores}")
+    print(f"Algorithm Using: {PARALLEL_THREADS} Cores")
+    print(f"Suggested Optimal Cores: {suggested_cores}")
+    print("========================================\n")
+
+    logging.info(f"\n\n{'='*40}")
+    logging.info(f"Starting OceanGo log at {log_start}")
+    logging.info(f"OS Platform: {platform.system()} ({platform.machine()})")
+    logging.info(f"Processing Computing Device: {device.type.upper()}")
+    logging.info(f"Device Details: {device_name}")
+    logging.info(f"System CPU Cores Available: {sys_cores}")
+    logging.info(f"Algorithm Using: {PARALLEL_THREADS} Cores")
+    logging.info(f"Suggested Optimal Cores: {suggested_cores}")
+    logging.info(f"{'='*40}")
+
+# ====================================================
+#             ResNet Blocks
+# ====================================================
+class ResBlock(nn.Module):
+    def __init__(self, num_channels):
+        super().__init__()
+        self.conv1 = nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(num_channels)
+        self.conv2 = nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(num_channels)
+
+    def forward(self, x):
+        res = x
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = self.bn2(self.conv2(x))
+        x += res
+        x = F.relu(x)
+        return x
+
+# ====================================================
+#             Policy-Value Network (ResNet)
+# ====================================================
+class PolicyValueNet(nn.Module):
+    def __init__(self, board_size=BOARD_SIZE, num_channels=RESNET_CHANNELS, num_res_blocks=RESNET_BLOCKS):
+        super().__init__()
+        self.board_size = board_size
+
+        # Initial Convolutional Block
+        self.conv_in = nn.Conv2d(17, num_channels, kernel_size=3, padding=1, bias=False)
+        self.bn_in = nn.BatchNorm2d(num_channels)
+
+        # Residual Blocks
+        self.res_blocks = nn.ModuleList([ResBlock(num_channels) for _ in range(num_res_blocks)])
+
+        # Policy head
+        self.policy_conv = nn.Conv2d(num_channels, 2, kernel_size=1, bias=False)
+        self.policy_bn = nn.BatchNorm2d(2)
+        self.policy_fc = nn.Linear(2 * board_size * board_size, board_size * board_size + 1)
+
+        # Value head
+        self.value_conv = nn.Conv2d(num_channels, 1, kernel_size=1, bias=False)
+        self.value_bn = nn.BatchNorm2d(1)
+        self.value_fc1 = nn.Linear(board_size * board_size, 256)
+        self.value_fc2 = nn.Linear(256, 1)
+
+    def forward(self, x):
+        # x: (batch_size, 17, board_size, board_size)
+        x = F.relu(self.bn_in(self.conv_in(x)))
+        
+        for block in self.res_blocks:
+            x = block(x)
+
+        # Policy
+        p = F.relu(self.policy_bn(self.policy_conv(x)))
+        p = p.view(p.size(0), -1)
+        p = self.policy_fc(p)
+
+        # Value
+        v = F.relu(self.value_bn(self.value_conv(x)))
+        v = v.view(v.size(0), -1)
+        v = F.relu(self.value_fc1(v))
+        v = torch.tanh(self.value_fc2(v))  # in [-1, 1]
+
+        return p, v
+
+# ====================================================
+#             GoGame class (CPU logic)
+# ====================================================
 class GoGame:
     def __init__(self, board_size=BOARD_SIZE):
-        """
-        Initialize a Go game instance.
-
-        Args:
-            board_size (int): The size of the game board.
-        """
         self.board_size = board_size
-        self.board = [[' ' for _ in range(board_size)] for _ in range(board_size)]
-        self.current_player = 1  # Player 1
-        self.ko_point = None
+        # 0=empty, 1=player1, 2=player2
+        self.board = np.zeros((board_size, board_size), dtype=np.int32)
+        self.current_player = 1
+        self.history = set()
+        self.history.add(self.board.tobytes())
+        self.passes_in_a_row = 0
+        self.history_states = [np.zeros((board_size, board_size), dtype=np.int32) for _ in range(8)]
+        self.history_states[0] = self.board.copy()
 
-    def is_valid_move(self, move):
-        """
-        Check if a move is valid.
+    def copy(self):
+        g = GoGame(self.board_size)
+        g.board = self.board.copy()
+        g.current_player = self.current_player
+        g.history = self.history.copy()
+        g.passes_in_a_row = self.passes_in_a_row
+        g.history_states = [b.copy() for b in self.history_states]
+        return g
 
-        Args:
-            move (tuple): The coordinates of the move (x, y).
+    def get_state_np(self):
+        return (self.board.copy(), self.current_player)
 
-        Returns:
-            bool: True if the move is valid, False otherwise.
-        """
-        x, y = move
-        return 0 <= x < self.board_size and 0 <= y < self.board_size and self.board[x][y] == ' '
-
-    def is_suicide_move(self, move):
-        """
-        Check if a move leads to suicide.
-
-        Args:
-            move (tuple): The coordinates of the move (x, y).
-
-        Returns:
-            bool: True if the move is a suicide move, False otherwise.
-        """
-        x, y = move
-        if not self.is_valid_move(move):
-            return False
-        # test_board = [row[:] for row in self.board]   # old version
-        test_board = copy.deepcopy(self.board)
-        test_board[x][y] = self.current_player
-        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < self.board_size and 0 <= ny < self.board_size and test_board[nx][ny] == ' ':
-                return False
-        return not self.has_liberties((x, y), test_board)
-
-    def has_liberties(self, point, board):
-        """
-        Check if a group of stones has liberties.
-
-        Args:
-            point (tuple): The coordinates of the stone (x, y).
-            board (list): The current game board.
-
-        Returns:
-            bool: True if the group has liberties, False otherwise.
-        """
-        x, y = point
-        color = board[x][y]
-        visited = [[False for _ in range(self.board_size)] for _ in range(self.board_size)]
-
-        def dfs(point):
-            x, y = point
-            visited[x][y] = True
-            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
-                    if board[nx][ny] == ' ':
-                        return True
-                    elif not visited[nx][ny] and board[nx][ny] == color:
-                        if dfs((nx, ny)):
-                            return True
-            return False
-
-        return dfs(point)
-
-    def remove_captured_stones(self):
-        """
-        Remove captured stones from the board.
-        """
-        for x in range(self.board_size):
-            for y in range(self.board_size):
-                if self.board[x][y] != ' ':
-                    color = self.board[x][y]
-                    group = self.find_group((x, y))
-                    if not self.has_liberties_in_group(group):
-                        # Remove the captured stones
-                        for stone in group:
-                            self.board[stone[0]][stone[1]] = ' '
-
-    def find_group(self, start):
-        """
-        Find the group of stones connected to a given stone.
-
-        Args:
-            start (tuple): The coordinates of the starting stone (x, y).
-
-        Returns:
-            set: A set of stone coordinates representing the group.
-        """
-        color = self.board[start[0]][start[1]]
-        group = set()
-        stack = [start]
-
-        while stack:
-            x, y = stack.pop()
-            group.add((x, y))
-            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < self.board_size and 0 <= ny < self.board_size and (nx, ny) not in group:
-                    if self.board[nx][ny] == color:
-                        stack.append((nx, ny))
-
-        return group
-
-    def has_liberties_in_group(self, group):
-        """
-        Check if a group of stones has liberties
-        
-        Args:
-            group (set): The set of coordinates representing the group of stones.
-        
-        Returns:
-            bool: True if the group has liberties, False otherwise.
-        """
-        for stone in group:
-            x, y = stone
-            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < self.board_size and 0 <= ny < self.board_size and self.board[nx][ny] == ' ':
-                    return True
-        return False
-
-    def make_move(self, x, y):
-        """
-        Make a move on the board.
-
-        Args:
-            x (int): The x-coordinate of the move.
-            y (int): The y-coordinate of the move.
-
-        Returns:
-            bool: True if the move is successful, False otherwise.
-        """
-        move = x, y
-        if self.is_valid_move(move) and not self.is_suicide_move(move):
-            self.board[x][y] = self.current_player
-            if self.ko_point == move:
-                self.ko_point = None
-            else:
-                self.ko_point = None
-            self.remove_captured_stones()  # Remove captured stones after each move
-            self.switch_player()
-            return True
-        return False
-
+    def get_nn_input(self):
+        """ Returns 17 x board_size x board_size numpy array """
+        planes = np.zeros((17, self.board_size, self.board_size), dtype=np.float32)
+        for i in range(8):
+            board_i = self.history_states[i]
+            planes[i] = (board_i == self.current_player).astype(np.float32)
+            planes[i+8] = (board_i == (3 - self.current_player)).astype(np.float32)
+        planes[16] = 1.0 if self.current_player == 1 else 0.0
+        return planes
 
     def switch_player(self):
-        """
-        Toggle between player 1 and player 2
-        """
         self.current_player = 3 - self.current_player
 
-    def get_legal_moves(self):
-        """
-        Get a list of legal moves.
+    def is_valid_move(self, x, y):
+        # Pass move
+        if x == -1 and y == -1:
+            return True
+        if x < 0 or x >= self.board_size or y < 0 or y >= self.board_size:
+            return False
+        if self.board[x, y] != 0:
+            return False
+        return self._try_move(x, y)
 
-        Returns:
-            list: A list of legal moves.
-        """
-        legal_moves = []
+    def _try_move(self, x, y):
+        temp_board = self.board.copy()
+        temp_board[x, y] = self.current_player
+        
+        # Remove captures
+        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            nx, ny = x+dx, y+dy
+            if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
+                if temp_board[nx, ny] == 3 - self.current_player:
+                    if not self._has_liberty((nx, ny), temp_board):
+                        self._remove_group((nx, ny), temp_board)
+        
+        # Check suicide
+        if not self._has_liberty((x, y), temp_board):
+            return False
+            
+        # Check Ko (positional superko)
+        board_hash = temp_board.tobytes()
+        if board_hash in self.history:
+            return False
+            
+        return True
+
+    def make_move(self, x, y):
+        if not self.is_valid_move(x, y):
+            return False
+            
+        if x == -1 and y == -1:
+            self.passes_in_a_row += 1
+        else:
+            self.passes_in_a_row = 0
+            self.board[x, y] = self.current_player
+            
+            # Remove captures
+            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                nx, ny = x+dx, y+dy
+                if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
+                    if self.board[nx, ny] == 3 - self.current_player:
+                        if not self._has_liberty((nx, ny), self.board):
+                            self._remove_group((nx, ny), self.board)
+            
+        self.switch_player()
+        self.history.add(self.board.tobytes())
+        self.history_states.insert(0, self.board.copy())
+        self.history_states.pop()
+        return True
+
+    def _has_liberty(self, start, board_state):
+        from collections import deque
+        color = board_state[start[0], start[1]]
+        visited = set()
+        q = deque([start])
+        while q:
+            cx, cy = q.pop()
+            if (cx, cy) not in visited:
+                visited.add((cx, cy))
+                for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                    nx, ny = cx+dx, cy+dy
+                    if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
+                        if board_state[nx, ny] == 0:
+                            return True
+                        if board_state[nx, ny] == color and (nx, ny) not in visited:
+                            q.append((nx, ny))
+        return False
+
+    def _remove_group(self, start, board_state):
+        from collections import deque
+        color = board_state[start[0], start[1]]
+        visited = set()
+        q = deque([start])
+        while q:
+            cx, cy = q.pop()
+            if (cx, cy) not in visited:
+                visited.add((cx, cy))
+                board_state[cx, cy] = 0
+                for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                    nx, ny = cx+dx, cy+dy
+                    if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
+                        if board_state[nx, ny] == color and (nx, ny) not in visited:
+                            q.append((nx, ny))
+
+    def get_legal_moves(self):
+        moves = [(-1, -1)]  # Pass is always a legal move
         for x in range(self.board_size):
             for y in range(self.board_size):
-                if self.is_valid_move((x, y)) and not self.is_suicide_move((x, y)):
-                    legal_moves.append((x, y))
-        return legal_moves
+                if self.board[x, y] == 0 and self._try_move(x, y):
+                    moves.append((x, y))
+        return moves
 
     def is_game_over(self):
-        """
-        Check if the game is over.
-
-        Returns:
-            bool: True if the game is over, False otherwise.
-        """
-        return len(self.get_legal_moves()) == 0
+        return self.passes_in_a_row >= 2 or len(self.get_legal_moves()) <= 1
 
     def get_winner(self):
-        """
-        Get the winner of the game.
+        # Chinese area scoring with Komi
+        b_stones = np.count_nonzero(self.board == 1)
+        w_stones = np.count_nonzero(self.board == 2)
+        b_terr = 0
+        w_terr = 0
+        visited = set()
 
-        Returns:
-            int: -1 if player wins, 1 if AI wins, 0 for a tie
-        """
-        if not self.is_game_over():
-            return None
-        player1_stones = sum(row.count(1) for row in self.board)
-        player2_stones = sum(row.count(2) for row in self.board)
-        if player1_stones > player2_stones:
-            return -1  # Player 1 wins
-        elif player2_stones > player1_stones:
-            return 1  # Player 2 wins (AI)
-        else:
-            return 0  # Draw
+        for r in range(self.board_size):
+            for c in range(self.board_size):
+                if self.board[r, c] == 0 and (r, c) not in visited:
+                    from collections import deque
+                    q = deque([(r, c)])
+                    group = set([(r, c)])
+                    touches_black = False
+                    touches_white = False
 
-    # Create a deep copy of the current board state
-    def get_state(self):
-        """
-        Get a deep copy of the current board state.
+                    while q:
+                        cx, cy = q.pop()
+                        visited.add((cx, cy))
+                        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                            nx, ny = cx+dx, cy+dy
+                            if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
+                                if self.board[nx, ny] == 1:
+                                    touches_black = True
+                                elif self.board[nx, ny] == 2:
+                                    touches_white = True
+                                elif self.board[nx, ny] == 0 and (nx, ny) not in group:
+                                    group.add((nx, ny))
+                                    q.append((nx, ny))
+                    
+                    if touches_black and not touches_white:
+                        b_terr += len(group)
+                    elif touches_white and not touches_black:
+                        w_terr += len(group)
 
-        Returns:
-            list: A deep copy of the current board state.
-        """
+        komi = 7.5
+        b_score = b_stones + b_terr
+        w_score = w_stones + w_terr + komi
 
-        return copy.deepcopy(self.board)
-    
-    def render(self):
-        """
-        Render the current board state.
-        """
-        for row in self.board:
-            print(' '.join(map(str, row)))
+        if b_score > w_score:
+            return 1
+        elif w_score > b_score:
+            return 2
+        return 0
 
-# The `MCTSTreeNode` class represents a node in a Monte Carlo Tree Search algorithm with methods for
-# initializing a node and checking if it is fully expanded.
-class MCTSTreeNode:
-    def __init__(self, parent=None, move=None):
-        """
-        Initialize a node in the MCTS tree.
+# ====================================================
+#  Helper: Convert inputs to PyTorch Tensor
+# ====================================================
+def boards_to_tensor(batch_of_inputs):
+    # batch_of_inputs is a list of 17-channel planes
+    arr_np = np.stack(batch_of_inputs, axis=0)
+    t = torch.from_numpy(arr_np).to(device)
+    return t
 
-        Args:
-            parent (MCTSTreeNode): The parent node. Defaults to None.
-            move (tuple): The move associated with the node. Defaults to None.
-        """
+def softmax(x):
+    e = np.exp(x - np.max(x))
+    return e / np.sum(e)
+
+# ====================================================
+#    MCTS Node & Basic MCTS (w/ policy/value net)
+# ====================================================
+class NN_MCTS_Node:
+    def __init__(self, game_state: GoGame, parent=None, move=None):
+        self.game_state = game_state
         self.parent = parent
         self.move = move
-        self.children = []
-        self.visit_count = 0
-        self.total_value = 0
-        self.state = None
-        self.unvisited_moves = None
+        self.children = {}
+        self.unexpanded_moves = self.game_state.get_legal_moves()
 
-    # Check if a node is fully expanded by examining unvisited moves
-    def is_fully_expanded(self):
-        """
-        Check if the node is fully expanded.
+        # MCTS stats
+        self.N = 0
+        self.W = 0
+        self.Q = 0
+        self.virtual_loss = 0  # for parallel batched MCTS
+        self.P = 0  
+        self.policy_map = {}  
+        self.value = 0        
 
-        Returns:
-            bool: True if the node is fully expanded, False otherwise.
-        """
-        return not self.unvisited_moves
-
-# Define the UCB1 value function for node selection
-def ucb1_value(node, exploration_weight=1.0):
-    """
-    Calculate the UCB1 value for a node.
-
-    Args:
-        node (MCTSTreeNode): The node for which to calculate the UCB1 value.
-        exploration_weight (float): The exploration weight parameter. Defaults to 1.0.
-
-    Returns:
-        float: The UCB1 value for the node.
-    """
-    if node.visit_count == 0:
-        return math.inf
-    exploitation = node.total_value / node.visit_count
-    exploration = exploration_weight * math.sqrt(math.log(node.parent.visit_count) / node.visit_count)
-    return exploitation + exploration
-
-# Define the node selection phase of MCTS
-def select(node):
-    """
-    Select a node for exploration in the MCTS tree.
-
-    Args:
-        node (MCTSTreeNode): The current node in the tree.
-
-    Returns:
-        MCTSTreeNode: The selected child node.
-    """
-    while not node.is_fully_expanded():
-        unvisited_moves = node.unvisited_moves
-        move = random.choice(unvisited_moves)
-        unvisited_moves.remove(move)
-        new_state = copy.deepcopy(node.state)
-        new_state.make_move(*move)
-        child = MCTSTreeNode(parent=node, move=move)
-        child.state = new_state
-        node.children.append(child)
-        return child
-    return max(node.children, key=ucb1_value)
-
-# Define the node expansion phase of MCTS
-def expand(node):
-    """
-    Expand a node in the MCTS tree.
-
-    Args:
-        node (MCTSTreeNode): The node to expand.
-    """
-    unvisited_moves = node.unvisited_moves
-    if not unvisited_moves:
-        return
-    move = random.choice(unvisited_moves)
-    unvisited_moves.remove(move)
-    new_state = copy.deepcopy(node.state)
-    new_state.make_move(*move)
-    child = MCTSTreeNode(parent=node, move=move)
-    child.state = new_state
-    node.children.append(child)
-
-# Define the simulation phase of MCTS
-def simulate(node):
-    """
-    Simulate a game from a given node.
-
-    Args:
-        node (MCTSTreeNode): The node from which to simulate the game.
-
-    Returns:
-        int: The result of the simulated game (-1 for player win, 1 for AI win, 0 for Tie).
-    """
-    state = copy.deepcopy(node.state)
-    while not state.is_game_over():
-        legal_moves = state.get_legal_moves()
-        move = random.choice(legal_moves)
-        state.make_move(*move)
-    return state.get_winner()
-
-# Define the backpropagation phase of MCTS
-def backpropagate(node, result):
-    """
-    Backpropagate the result of a simulation through the MCTS tree.
-
-    Args:
-        node (MCTSTreeNode): The node to start backpropagation from.
-        result (int): The result of the simulation.
-    """
-    while node is not None:
-        node.visit_count += 1
-        node.total_value += result
-        node = node.parent
-
-# Define the main MCTS function for parallel execution
-def mcts_parallel(root, iterations, return_dict):
-    """
-    Perform MCTS with parallel execution.
-
-    Args:
-        root (MCTSTreeNode): The root node of the MCTS tree.
-        iterations (int): The number of iterations to run MCTS.
-        return_dict (multiprocessing.Manager.dict): A shared dictionary to store results.
-    """
-    for _ in range(iterations):
-        node = select(root)
-        expand(node)
-        result = simulate(node)
-        backpropagate(node, result)
-    
-    return_dict[root] = root.children
-
-# Define the AI's move selection using MCTS with parallel execution
-def ai_play_parallel(board, iterations=ITERATIONS, num_processes=PROCESSES_NUM):
-    """
-    Select the AI's move using MCTS with parallel execution.
-
-    Args:
-        board (GoGame): The current game board.
-        iterations (int): The number of MCTS iterations. Defaults to ITERATIONS.
-        num_processes (int): The number of parallel processes. Defaults to PROCESSES_NUM.
-
-    Returns:
-        tuple: The coordinates of the AI's chosen move (x, y).
-    """
-    root = MCTSTreeNode()
-    root.state = board
-    root.unvisited_moves = board.get_legal_moves()
-
-    # Split the work among multiple processes
-    manager = multiprocessing.Manager()
-    return_dict = manager.dict()
-
-    processes = []
-    for _ in range(num_processes):
-        p = multiprocessing.Process(target=mcts_parallel, args=(root, iterations // num_processes, return_dict))
-        processes.append(p)
-        p.start()
-
-    for p in processes:
-        p.join()
-
-    # Aggregate results from different processes
-    children = []
-    for child_list in return_dict.values():
-        children.extend(child_list)
+def mcts_select(root: "NN_MCTS_Node"):
+    node = root
+    search_path = [node]
+    while True:
+        if len(node.unexpanded_moves) > 0:
+            mv_idx = random.randrange(len(node.unexpanded_moves))
+            mv = node.unexpanded_moves.pop(mv_idx)
+            ng = node.game_state.copy()
+            ng.make_move(*mv)
+            child_node = NN_MCTS_Node(ng, parent=node, move=mv)
+            node.children[mv] = child_node
+            search_path.append(child_node)
+            return child_node, search_path
+        if not node.children:
+            return node, search_path
+        best_score = -999999
+        best_child = None
         
-    for n in children:
-        print_tree_structure(n, 1)
+        for mv, ch in node.children.items():
+            c_puct = C_PUCT
+            total_n = ch.N + ch.virtual_loss
+            U = c_puct * ch.P * math.sqrt(node.N + node.virtual_loss) / (1 + total_n)
+            Q_val = (ch.W - ch.virtual_loss * 1.0) / total_n if total_n > 0 else 0
+            score = Q_val + U
+            if score > best_score:
+                best_score = score
+                best_child = ch
+        
+        node = best_child
+        search_path.append(node)
 
-    best_move = max(children, key=lambda c: c.visit_count)
-    print("Best Move:", best_move.move, "Visit Count:", best_move.visit_count)
-    
-    return best_move.move
+def nn_batch_evaluate(nodes, net=None, worker_id=None, req_queue=None, res_queue=None):
+    batch = []
+    for nd in nodes:
+        batch.append(nd.game_state.get_nn_input())
 
-# This function is for testing purposes
-def print_tree_structure(node, depth):
-    """
-    Print the tree structure starting from the given node.
+    if net is not None:
+        input_tensor = boards_to_tensor(batch)
+        with torch.no_grad():
+            policy_logits, value_out = net(input_tensor)
+        policy_logits = policy_logits.cpu().numpy()
+        value_out = value_out.squeeze(1).cpu().numpy()
+    else:
+        req_queue.put((worker_id, batch))
+        policy_logits, value_out = res_queue.get()
 
-    Args:
-        node (MCTSTreeNode): The root node of the tree to print.
-        depth (int): The current depth of the node in the tree.
-    """
-    if node is not None:
-        print("  " * depth, f"Move: {node.move}, Visit Count: {node.visit_count}")
-        for child in node.children:
-            print_tree_structure(child, depth + 1)
+    for i, nd in enumerate(nodes):
+        val = value_out[i]
+        nd.value = float(val)
+        p_logits = policy_logits[i]
+        legal_moves = nd.unexpanded_moves
+        board_s = nd.game_state.board_size
+
+        move_indices = []
+        for (x,y) in legal_moves:
+            if x == -1 and y == -1:
+                move_indices.append(board_s * board_s)
+            else:
+                move_indices.append(x * board_s + y)
+        selected_logits = [p_logits[idx] for idx in move_indices]
+        if len(selected_logits) > 0:
+            probs = softmax(np.array(selected_logits))
+        else:
+            probs = []
+
+        nd.policy_map = {}
+        for mv, p in zip(legal_moves, probs):
+            nd.policy_map[mv] = p
+
+def mcts_expand(node: "NN_MCTS_Node"):
+    for mv in node.unexpanded_moves:
+        ng = node.game_state.copy()
+        ng.make_move(*mv)
+        child_node = NN_MCTS_Node(ng, parent=node, move=mv)
+        child_node.P = node.policy_map.get(mv, 0.0)
+        node.children[mv] = child_node
+    node.unexpanded_moves = []
+
+def apply_virtual_loss(search_path, loss=1.0):
+    for node in search_path:
+        node.virtual_loss += loss
+
+def remove_virtual_loss(search_path, loss=1.0):
+    for node in search_path:
+        node.virtual_loss -= loss
+
+def mcts_backup(search_path, value):
+    # Backward pass for the current search path modifying true W/N 
+    for node in reversed(search_path):
+        node.N += 1
+        node.W += value
+        node.Q = node.W / node.N
+        value = -value
+
+def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0, batch_size=8, worker_id=None, req_queue=None, res_queue=None):
+    sims = 0
+    while sims < n_simulations:
+        # Collect a batch of leaves concurrently and apply virtual loss so paths diverge
+        batch_paths = []
+        batch_leaves = []
+        
+        current_batch_size = min(batch_size, n_simulations - sims)
+        for _ in range(current_batch_size):
+            leaf, path = mcts_select(root)
+            if leaf in batch_leaves:
+                break # Prevents evaluating the exact same leaf redundantly in one batch (which causes hangs).
+            apply_virtual_loss(path)
+            batch_paths.append(path)
+            batch_leaves.append(leaf)
+
+        # Batch evaluate neural network logic on completely unique paths together 
+        if batch_leaves:
+            nn_batch_evaluate(batch_leaves, net=net, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
+
+            # Backpropagate actual values and remove virtual loss
+            for path, leaf in zip(batch_paths, batch_leaves):
+                mcts_expand(leaf)
+                remove_virtual_loss(path)
+                mcts_backup(path, leaf.value)
+                
+            sims += len(batch_leaves)
+            if pygame.get_init():
+                pygame.event.pump()
+        else:
+            sims += 1
+
+    move_N = [(mv, ch.N) for mv, ch in root.children.items()]
+    if not move_N:
+        return {}
+    moves, visits = zip(*move_N)
+    visits = np.array(visits, dtype=np.float32)
+    if temp < 1e-3:
+        best_idx = np.argmax(visits)
+        probs = np.zeros_like(visits)
+        probs[best_idx] = 1.0
+    else:
+        v = visits ** (1.0 / temp)
+        probs = v / np.sum(v)
+    policy_dict = dict(zip(moves, probs))
+    return policy_dict
+
+# ====================================================
+#        Self-Play: Generating Training Data
+# ====================================================
+
+def gpu_server_thread(net, req_queue, res_queues, total_workers):
+    active_workers = total_workers
+    while active_workers > 0:
+        requests = []
+        try:
+            req = req_queue.get(timeout=0.1)
+            if req == "DONE":
+                active_workers -= 1
+                continue
+            requests.append(req)
+            while len(requests) < 512:
+                try:
+                    req = req_queue.get_nowait()
+                    if req == "DONE":
+                        active_workers -= 1
+                        continue
+                    requests.append(req)
+                except queue.Empty:
+                    break
+        except queue.Empty:
+            continue
             
-# Define the rendering function for the game board in text
-def render_game(board):
-    """
-    Render the game board in text format.
+        if requests:
+            all_inputs = []
+            for w_id, inputs in requests:
+                all_inputs.extend(inputs)
+                
+            input_tensor = boards_to_tensor(all_inputs)
+            with torch.no_grad():
+                policy_logits, value_out = net(input_tensor)
+            policy_logits = policy_logits.cpu().numpy()
+            value_out = value_out.squeeze(1).cpu().numpy()
+            
+            offset = 0
+            for w_id, inputs in requests:
+                n = len(inputs)
+                p = policy_logits[offset:offset+n]
+                v = value_out[offset:offset+n]
+                res_queues[w_id].put((p, v))
+                offset += n
 
-    Args:
-        board (list): The current game board.
+def self_play_wrapper(board_size, n_mcts_sims, temp, worker_id, num_games, req_queue, res_queue, progress_queue):
+    data = []
+    for g in range(num_games):
+        game_data = self_play_one_game(net=None, board_size=board_size, n_mcts_sims=n_mcts_sims, temp=temp, game_idx=g+1, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
+        data.extend(game_data)
+        progress_queue.put(1)
+    return data
 
-    Returns:
-        str: The rendered game board.
-    """
-    out = ""
-    for i in range(len(board)):
-        for j in range(len(board[i])):
-            if board[i][j] == " ":
-                out += ". "
-                print(".", end=" ")  # An empty intersection
-            elif board[i][j] == 1:
-                out += "○ "
-                print("○", end=" ")  # Player 1's stone  ○⚪◯
-            elif board[i][j] == 2:
-                out += "● "
-                print("●", end=" ")  # Player 2's stone   ●⚫⬤
-            # ⬜⬛➕
-        print()
-        out += "\n"
-    print("------------------------------------")
-    out += "------------------------------------------------------------------------"
-    return out
-
-# This function uses pygame to create the game UI
-def draw_board(screen, game):
-    """
-    Draw the game board using Pygame.
-
-    Args:
-        screen (pygame.Surface): The Pygame screen surface.
-        game (GoGame): The current game instance.
-    """
-    screen.fill((0, 207, 207))  # Fill the screen with white color
-
-    # Draw grid lines
-    for i in range(1, BOARD_SIZE + 1):
-        pygame.draw.line(screen, (0, 0, 0), (i * GRID_SIZE, 0+GRID_SIZE), (i * GRID_SIZE, SCREEN_SIZE-GRID_SIZE), 2)
-        pygame.draw.line(screen, (0, 0, 0), (0+GRID_SIZE, i * GRID_SIZE), (SCREEN_SIZE-GRID_SIZE, i * GRID_SIZE), 2)
-
-    # Draw stones at the intersections
-    for i in range(BOARD_SIZE):
-        for j in range(BOARD_SIZE):
-            # Calculate the coordinates of the intersection point
-            x = (j + 1) * GRID_SIZE
-            y = (i + 1) * GRID_SIZE
-
-            if game.board[i][j] == 1:
-                pygame.draw.circle(screen, (0, 0, 0), (x, y), GRID_SIZE // 2 - 10)
-            elif game.board[i][j] == 2:
-                pygame.draw.circle(screen, (194, 194, 194), (x, y), GRID_SIZE // 2 - 10)
-
-    pygame.display.flip()
-    
-
-# Define the main game loop
-def main():
-    """
-    The main game loop.
-    """
-    
-    date = datetime.datetime.now()
-    current_time = date.strftime("%Y.%b.%d_%Hh%Mm")
-    # file = open("data/"+current_time+".txt", "a", encoding='utf-8')
-    # file.write("Board size: "+str(BOARD_SIZE) + "\nIterations:"+str(ITERATIONS) + "\nProcesses number:"+str(PROCESSES_NUM)+"\n")
-    
-    start = 0
-    
-    board_size = BOARD_SIZE
+def self_play_one_game(net=None, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0, game_idx=1, worker_id=None, req_queue=None, res_queue=None):
     game = GoGame(board_size)
-    
-    pygame.init()
-    screen = pygame.display.set_mode((SCREEN_SIZE, SCREEN_SIZE))
-    pygame.display.set_caption("Go Game")
+    data = []  # store (nn_input, player, pi, z)
+    move_count = 0
+
+    logging.info(f"  Starting new self-play game {game_idx} on worker {worker_id}.")
     
     while not game.is_game_over():
-        px, py = 0, 0
-        draw_board(screen, game)
+        current_temp = 1.0 if move_count < 30 else 1e-3
+
+        root = NN_MCTS_Node(game.copy())
+        nn_batch_evaluate([root], net=net, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
+        mcts_expand(root)
+
+        # Add Dirichlet noise to the root node for exploration
+        moves = list(root.children.keys())
+        if len(moves) > 0:
+            noise = np.random.dirichlet([DIRICHLET_ALPHA] * len(moves))
+            for i, mv in enumerate(moves):
+                root.children[mv].P = (1.0 - DIRICHLET_EPSILON) * root.children[mv].P + DIRICHLET_EPSILON * noise[i]
+
+        pi_dict = mcts_run(root, net, n_mcts_sims, temp=current_temp, batch_size=MCTS_BATCH_SIZE, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
+        pi_flat = np.zeros(board_size * board_size + 1, dtype=np.float32)
+        for mv, p in pi_dict.items():
+            if mv[0] == -1 and mv[1] == -1:
+                idx = board_size * board_size
+            else:
+                idx = mv[0]*board_size + mv[1]
+            pi_flat[idx] = p
+
+        if len(pi_dict) > 0:
+            moves, probs = zip(*pi_dict.items())
+            selected_move = random.choices(moves, weights=probs, k=1)[0]
+        else:
+            break
+
+        nn_input = game.get_nn_input()
+        current_player = game.current_player
+        data.append((nn_input, current_player, pi_flat))
+
+        game.make_move(*selected_move)
+        move_count += 1
         
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                print("Player")
-                px, py = event.pos
-                print(px,py)
-                px = round(px/GRID_SIZE)
-                py = round(py/GRID_SIZE)
-        
-        if game.current_player == 1 and (px!=0 and py!=0):
-            game.make_move(py-1, px-1)
-            game_board_out = render_game(game.get_state())
-            # file.write("\n"+str(3-game.current_player) + "\n" + game_board_out)
-        elif game.current_player == 2:
-            print("else")
-            print("AI")
-            start = time.time()
-            ai_move = ai_play_parallel(game)  # Use the parallel AI function
-            game.make_move(*ai_move)
-            end = time.time()
-            print(3-game.current_player, " Time=", end - start)
-            game_board_out = render_game(game.get_state())
-            # file.write("\n"+str(3-game.current_player) + "   Time= " + str(end - start)+"\n"+game_board_out)
-            
+        logging.info(f"Game {game_idx} Move {move_count}: Player {current_player} -> {selected_move}")
 
     winner = game.get_winner()
-    if winner == 0:
-        print("It's a tie!")
-        # file.write("Tie")
-    elif winner == -1:
-        print("You win!")
-        # file.write("You win")
-    elif winner == 1:
-        print("AI wins!")
-        # file.write("AI win")
-        
+    logging.info(f"Game {game_idx} over. Winner: Player {winner} after {move_count} moves.")
     
+    for i, (nn_input_idx, player, pi_flat) in enumerate(data):
+        if winner == 0:
+            z = 0
+        elif winner == player:
+            z = 1
+        else:
+            z = -1
+        data[i] = (nn_input_idx, player, pi_flat, z)
+    return data
+
+def get_equi_data(play_data):
+    """
+    Augment data using all 8 symmetries of the board (rotations and reflections).
+    play_data: list of (nn_input, current_player, pi_flat, z)
+    """
+    extend_data = []
+    for (state, cplayer, pi, z) in play_data:
+        board_size = state.shape[1]
+        # Reshape the policy vector (excluding the pass move) back to the board dimensions
+        pi_board = np.reshape(pi[:-1], (board_size, board_size))
+        pi_pass = pi[-1]
+        
+        for i in [1, 2, 3, 4]:
+            # Rotate counter-clockwise (over H and W axes for 3D state)
+            equi_state = np.rot90(state, k=i, axes=(1, 2))
+            equi_pi_board = np.rot90(pi_board, k=i)
+            equi_pi = np.zeros_like(pi)
+            equi_pi[:-1] = equi_pi_board.flatten()
+            equi_pi[-1] = pi_pass
+            extend_data.append((equi_state.copy(), cplayer, equi_pi.copy(), z))
+            
+            # Flip horizontally (across the W axis for 3D state)
+            equi_state_flip = np.flip(equi_state, axis=2)
+            equi_pi_board_flip = np.fliplr(equi_pi_board)
+            equi_pi_flip = np.zeros_like(pi)
+            equi_pi_flip[:-1] = equi_pi_board_flip.flatten()
+            equi_pi_flip[-1] = pi_pass
+            extend_data.append((equi_state_flip.copy(), cplayer, equi_pi_flip.copy(), z))
+            
+    return extend_data
+
+# ====================================================
+#  Replay Buffer (Stores data across iterations)
+# ====================================================
+REPLAY_BUFFER = []
+
+def add_to_replay_buffer(new_data):
+    global REPLAY_BUFFER
+    REPLAY_BUFFER.extend(new_data)
+    if len(REPLAY_BUFFER) > MAX_REPLAY_BUFFER_SIZE:
+        excess = len(REPLAY_BUFFER) - MAX_REPLAY_BUFFER_SIZE
+        REPLAY_BUFFER = REPLAY_BUFFER[excess:]
+
+def sample_from_replay_buffer(sample_size=1024):
+    global REPLAY_BUFFER
+    if len(REPLAY_BUFFER) == 0:
+        return []
+    if sample_size >= len(REPLAY_BUFFER):
+        return REPLAY_BUFFER
+    return random.sample(REPLAY_BUFFER, sample_size)
+
+# ====================================================
+#          Training the Network
+# ====================================================
+def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_EPOCHS, lr=LEARNING_RATE):
+    """
+    data: list of (nn_input, current_player, pi_flat, z)
+    We'll do:
+      - policy loss (cross entropy w.r.t. pi_flat)
+      - value loss (MSE vs. z)
+    """
+    optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
+    net.train()
+
+    X_inputs = []
+    policy_targets = []
+    value_targets = []
+    board_size = net.board_size
+
+    for (nn_inp, cplayer, pi_flat, z) in data:
+        X_inputs.append(nn_inp)
+        policy_targets.append(pi_flat)
+        value_targets.append(z)
+
+    policy_targets = np.array(policy_targets, dtype=np.float32)
+    value_targets = np.array(value_targets, dtype=np.float32).reshape(-1,1)
+
+    n_samples = len(data)
+    indices = np.arange(n_samples)
+    total_batches = (n_samples + batch_size - 1) // batch_size
+
+    for ep in range(epochs):
+        np.random.shuffle(indices)
+        batch_losses = []
+        for batch_idx, start_idx in enumerate(range(0, n_samples, batch_size)):
+            end_idx = start_idx + batch_size
+            excerpt = indices[start_idx:end_idx]
+
+            batch_inputs = [X_inputs[i] for i in excerpt]
+            inp = boards_to_tensor(batch_inputs)
+            tgt_p = torch.from_numpy(policy_targets[excerpt]).to(device)
+            tgt_v = torch.from_numpy(value_targets[excerpt]).to(device)
+
+            optimizer.zero_grad()
+            out_p, out_v = net(inp)
+            out_p = out_p[:, :board_size*board_size + 1]
+
+            logp = F.log_softmax(out_p, dim=1)
+            policy_loss = -torch.sum(tgt_p * logp, dim=1).mean()
+
+            value_loss = F.mse_loss(out_v, tgt_v)
+            loss = policy_loss + value_loss
+
+            loss.backward()
+            optimizer.step()
+            batch_losses.append(loss.item())
+
+            # Print live progress in the terminal
+            if (batch_idx + 1) % 50 == 0 or (batch_idx + 1) == total_batches:
+                avg_recent_loss = np.mean(batch_losses[-50:])
+                print(f"  Epoch {ep+1}/{epochs} | Batch {batch_idx+1}/{total_batches} | Recent Loss: {avg_recent_loss:.4f}", end="\r")
+
+        print(f"\nEpoch {ep+1}/{epochs} Completed | Overall Avg Loss={np.mean(batch_losses):.4f}")
+        logging.info(f"Epoch {ep+1}/{epochs}, Loss={np.mean(batch_losses):.4f}")
+
+    net.eval()
+
+# ====================================================
+#             Putting it All Together
+# ====================================================
+def run_interactive_game(net):
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_SIZE, SCREEN_SIZE))
+    pygame.display.set_caption("Go Game (NN MCTS)")
+
+    game = GoGame(BOARD_SIZE)
+    clock = pygame.time.Clock()
+    last_move = None
+
+    def draw_board(screen, g: GoGame, last_mv):
+        # Wood board color
+        screen.fill((220, 179, 92))
+        for i in range(1, BOARD_SIZE + 1):
+            pygame.draw.line(screen, (0,0,0),
+                             (i*GRID_SIZE, GRID_SIZE),
+                             (i*GRID_SIZE, SCREEN_SIZE - GRID_SIZE), 2)
+            pygame.draw.line(screen, (0,0,0),
+                             (GRID_SIZE, i*GRID_SIZE),
+                             (SCREEN_SIZE - GRID_SIZE, i*GRID_SIZE), 2)
+                             
+        # Draw star points (Hoshi) for 19x19 board
+        if BOARD_SIZE == 19:
+            star_points = [(3, 3), (3, 9), (3, 15),
+                           (9, 3), (9, 9), (9, 15),
+                           (15, 3), (15, 9), (15, 15)]
+            for sx, sy in star_points:
+                px = (sy + 1) * GRID_SIZE
+                py = (sx + 1) * GRID_SIZE
+                pygame.draw.circle(screen, (0,0,0), (px, py), 4)
+
+        for x in range(BOARD_SIZE):
+            for y in range(BOARD_SIZE):
+                cell = g.board[x,y]
+                cx = (y+1)*GRID_SIZE
+                cy = (x+1)*GRID_SIZE
+                if cell == 1:
+                    pygame.draw.circle(screen, (0,0,0), (cx,cy), GRID_SIZE//2 - 5)
+                elif cell == 2:
+                    pygame.draw.circle(screen, (255,255,255), (cx,cy), GRID_SIZE//2 - 5)
+                    pygame.draw.circle(screen, (0,0,0), (cx,cy), GRID_SIZE//2 - 5, 1) # Outline for white
+                    
+        # Highlight last move
+        if last_mv and last_mv != (-1, -1):
+            lx, ly = last_mv
+            cx = (ly+1)*GRID_SIZE
+            cy = (lx+1)*GRID_SIZE
+            pygame.draw.circle(screen, (255, 0, 0), (cx,cy), 4)
+            
+        pygame.display.flip()
+
+    while True:
+        if game.is_game_over():
+            w = game.get_winner()
+            if w == 0:
+                print("Game over! It's a tie.")
+            else:
+                print(f"Game over! Winner = Player {w}")
+            pygame.quit()
+            sys.exit()
+
+        draw_board(screen, game, last_move)
+        clock.tick(15)
+
+        # Player 1 = human
+        if game.current_player == 1:
+            x,y = None,None
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_p:
+                        x, y = -1, -1 # Pass
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    px, py = event.pos
+                    grid_x = round((py/GRID_SIZE) - 1)
+                    grid_y = round((px/GRID_SIZE) - 1)
+                    if 0 <= grid_x < BOARD_SIZE and 0 <= grid_y < BOARD_SIZE:
+                        x,y = grid_x, grid_y
+            if x is not None:
+                if game.is_valid_move(x,y):
+                    game.make_move(x,y)
+                    last_move = (x, y)
+                    if (x, y) == (-1, -1):
+                        print("Human passed.")
+                        logging.info("Interactive Game: Human passed.")
+                    else:
+                        print(f"Human played: ({x}, {y})")
+                        logging.info(f"Interactive Game: Human played ({x}, {y})")
+        else:
+            # Player 2 = AI
+            print("AI thinking...", end="", flush=True)
+            logging.info("Interactive Game: AI thinking...")
+            root = NN_MCTS_Node(game.copy())
+            nn_batch_evaluate([root], net)
+            mcts_expand(root)
+            pi_dict = mcts_run(root, net, n_simulations=N_MCTS_SIMS, batch_size=MCTS_BATCH_SIZE)
+            if len(pi_dict) == 0:
+                print(" AI has no moves, passing?")
+                logging.info("Interactive Game: AI forced pass (no moves).")
+                game.make_move(-1, -1)
+                break
+            best_move = max(pi_dict.items(), key=lambda elem: elem[1])[0]
+            if best_move == (-1, -1):
+                print(" AI passes!")
+                logging.info("Interactive Game: AI voluntarily passed.")
+            else:
+                print(f" AI plays: {best_move}")
+                logging.info(f"Interactive Game: AI played: {best_move}")
+            game.make_move(*best_move)
+            last_move = best_move
+
+def main():
+    init_environment()
+    parser = argparse.ArgumentParser(description="OceanGo - AlphaZero styled Go AI")
+    parser.add_argument("--model", type=str, default="", help="Path to specific model to load (e.g. checkpoints/policy_value_net_iter_5.pth)")
+    parser.add_argument("--play", action="store_true", help="Play interactively immediately without training")
+    args = parser.parse_args()
+
+    # 1) Create or load network
+    net = PolicyValueNet(board_size=BOARD_SIZE).to(device)
+    
+    # Decide which model to load from parameters or fallback to latest.
+    load_path = args.model if args.model else "policy_value_net.pth"
+    
+    if os.path.isfile(load_path):
+        print(f"Loading existing model parameters from {load_path}...")
+        logging.info(f"Loading existing model parameters from {load_path}")
+        net.load_state_dict(torch.load(load_path, map_location=device))
+    else:
+        print("No existing model found. Starting from scratch.")
+        logging.info("No existing model found. Starting a fresh model.")
+    net.eval()
+
+    # If the user just wants to play against the loaded model, boot up the UI and exit the script after the game.
+    if args.play:
+        print("Starting interactive game...")
+        run_interactive_game(net)
+        return
+
+    checkpoints_dir = "checkpoints"
+    os.makedirs(checkpoints_dir, exist_ok=True)
+
+    # 2) Self-play / 3) Train 
+    total_start_time = time.time()
+
+    for iteration in range(N_ITER):
+        iteration_start_time = time.time()
+        print(f"==== Self-Play iteration {iteration+1} ====")
+        logging.info(f"==== Self-Play iteration {iteration+1} ====")
+
+        # Gather data from self-play (Parallelized)
+        iteration_data = []
+        print(f"  Starting {N_GAMES_PER_ITER} self-play games simultaneously (Parallel Execution)...")
+        logging.info(f"  Starting {N_GAMES_PER_ITER} parallel games in iteration {iteration+1}...")
+
+        # Dispatch parallel self-play games explicitly via multi-processing (Bypasses Python GIL)
+        print(f"  Allocating {PARALLEL_THREADS} parallel processing cores (Central GPU Queue Mode).")
+        logging.info(f"  Allocating {PARALLEL_THREADS} parallel processing cores (Central GPU Queue Mode).")
+
+        mp_manager = mp.Manager()
+        req_queue = mp_manager.Queue()
+        res_queues = [mp_manager.Queue() for _ in range(PARALLEL_THREADS)]
+        progress_queue = mp_manager.Queue()
+        
+        gpu_thread = threading.Thread(target=gpu_server_thread, args=(net, req_queue, res_queues, PARALLEL_THREADS))
+        gpu_thread.start()
+
+        with concurrent.futures.ProcessPoolExecutor(max_workers=PARALLEL_THREADS) as executor:
+            futures = []
+            games_per_worker = max(1, N_GAMES_PER_ITER // PARALLEL_THREADS)
+            
+            for w_id in range(PARALLEL_THREADS):
+                num_games = games_per_worker
+                if w_id == PARALLEL_THREADS - 1:
+                    num_games = N_GAMES_PER_ITER - games_per_worker * (PARALLEL_THREADS - 1)
+                
+                if num_games > 0:
+                    f = executor.submit(self_play_wrapper, BOARD_SIZE, N_MCTS_SIMS, 1.0, w_id, num_games, req_queue, res_queues[w_id], progress_queue)
+                    futures.append(f)
+            
+            completed_games = 0
+            iteration_games_start_time = time.time()
+            
+            # Progress reporting loop
+            while completed_games < N_GAMES_PER_ITER:
+                try:
+                    progress_queue.get(timeout=1.0)
+                    completed_games += 1
+                    elapsed = time.time() - iteration_games_start_time
+                    avg_time = elapsed / completed_games
+                    remaining = N_GAMES_PER_ITER - completed_games
+                    eta_seconds = int(avg_time * remaining)
+                    eta_str = time.strftime('%Hh %Mm %Ss', time.gmtime(eta_seconds))
+                    print(f"  --> Finished game {completed_games}/{N_GAMES_PER_ITER} | ETA: {eta_str}")
+                    logging.info(f"  Finished game {completed_games}/{N_GAMES_PER_ITER} | ETA: {eta_str}")
+                except queue.Empty:
+                    pass
+            
+            for future in futures:
+                game_data = future.result()
+                augmented_data = get_equi_data(game_data)
+                iteration_data.extend(augmented_data)
+                req_queue.put("DONE")
+
+        gpu_thread.join()
+
+        # Add iteration_data to global replay buffer
+        add_to_replay_buffer(iteration_data)
+        print(f"Total new data this iteration: {len(iteration_data)} states.")
+        logging.info(f"Total new data in iteration {iteration+1}: {len(iteration_data)} states.")
+
+        # Sample from the replay buffer for training
+        train_data = sample_from_replay_buffer(sample_size=TRAIN_SAMPLE_SIZE)
+        print(f"Training on replay buffer sample of size: {len(train_data)}")
+        logging.info(f"Training on replay buffer sample of size: {len(train_data)}")
+
+        if len(train_data) > 0:
+            train_start_time = time.time()
+            train_policy_value_net(net, train_data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_EPOCHS, lr=LEARNING_RATE)
+            train_end_time = time.time()
+            logging.info(f"Training completed in {train_end_time - train_start_time:.2f} seconds.")
+        else:
+            print("No training data available yet.")
+
+        # 4) Save the net (overwrites latest file and logs a checkpoint)
+        torch.save(net.state_dict(), "policy_value_net.pth")
+        checkpoint_path = os.path.join(checkpoints_dir, f"policy_value_net_iter_{iteration+1}.pth")
+        torch.save(net.state_dict(), checkpoint_path)
+        print("Model state saved sequentially.")
+        logging.info(f"Model saved at iteration {iteration+1} to checkpoint folder and base 'policy_value_net.pth'.")
+
+        iteration_end_time = time.time()
+        iteration_duration = iteration_end_time - iteration_start_time
+        logging.info(f"Iteration {iteration+1} duration: {iteration_duration:.2f} seconds.")
+
+    total_end_time = time.time()
+    total_selfplay_time = total_end_time - total_start_time
+    logging.info(f"Total self-play time across all iterations: {total_selfplay_time:.2f} seconds.")
+
+    # 5) Launch an interactive game with the trained net
+    run_interactive_game(net)
 
 if __name__ == "__main__":
+    mp.freeze_support()
     main()
