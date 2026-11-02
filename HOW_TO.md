@@ -2,6 +2,8 @@
 
 OceanGo contains a full AlphaZero-style training pipeline alongside an interactive graphical Go game engine. It is designed to run seamlessly on both **macOS** (Apple Silicon MPS / Intel) and **Windows 11** (NVIDIA CUDA / CPU).
 
+> For a full mathematical breakdown of the MCTS search, PUCT formula, and dual-head ResNet architecture, see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+
 ---
 
 ## 1. Prerequisites & Environment Setup
@@ -89,8 +91,21 @@ python t.py
 
 ## 4. Command Line Usage
 
-### A. Playing Interactively Against the AI
-To immediately play a game on the interactive Pygame board against the latest model:
+### A. Quick Start / Mode Selection
+Simply running:
+```bash
+python OceanGo.py
+```
+will present an interactive prompt:
+```
+Select OceanGo Mode:
+  [1] Play Go interactively (Pygame Window) [Default]
+  [2] Start AlphaZero AI Self-Play Training
+```
+Pressing **Enter** (or `1`) immediately boots up the graphical Pygame window.
+
+### B. Playing Interactively Against the AI
+To jump straight into the Pygame window without prompting:
 ```bash
 python OceanGo.py --play
 ```
@@ -103,26 +118,34 @@ python OceanGo.py --play
   python OceanGo.py --model checkpoints/policy_value_net_iter_3.pth --play
   ```
 
-### B. Training the AI
-To start the AlphaZero self-play and training sequence from scratch (or continue from the latest `policy_value_net.pth`):
+### C. Training the AI
+To start the AlphaZero self-play and training sequence directly:
 ```bash
-python OceanGo.py
+python OceanGo.py --train
 ```
-This automatically initiates:
-1. Multi-core self-play across CPU workers utilizing a Centralized GPU Queue architecture.
-2. Real-time progress displays for games, loss metrics, and ETA.
-3. Batch evaluation on the GPU accelerator (CUDA or MPS), preventing memory bottlenecks.
-4. Symmetrical board data augmentation (rotations and reflections).
-5. Saving iteration weights sequentially into `checkpoints/` and updating `policy_value_net.pth`.
-6. Time-stamped logging (`logs_YYYYMMDD_HHMMSS.log`).
 
-### C. Inspecting Model Parameters
+#### Training Options:
+- `--dry-run`: Runs a fast 10-second end-to-end sanity check (1 game, backpropagation, and save test) to verify hardware and directories before committing to a full run.
+- `--games <N>`: Sets the number of self-play games per iteration (default: `500`).
+- `--sims <N>`: Sets MCTS simulations per move (default: `800`).
+- `--iters <N>`: Sets number of training iterations (default: `50`).
+- `--save-dir <path>`: Specifies custom directory for checkpoints and models (e.g. Google Drive `/content/drive/MyDrive/OceanGo/checkpoints`).
+
+### D. Training on Google Colab (Cloud GPUs)
+For complete instructions on running in the cloud with zero credit waste, see the dedicated **[`COLAB_GUIDE.md`](COLAB_GUIDE.md)**.
+A pre-configured Jupyter notebook is included in the root directory: **[`OceanGo_Colab.ipynb`](OceanGo_Colab.ipynb)**.
+1. Open [Google Colab](https://colab.research.google.com) and upload `OceanGo_Colab.ipynb`.
+2. Select a GPU runtime (`Runtime -> Change runtime type -> GPU`).
+3. Run Step 4 (`--dry-run`) to verify CUDA GPU acceleration for 0 compute units.
+4. Run Step 5 to launch full training with automatic Google Drive checkpoint syncing.
+
+### E. Inspecting Model Parameters
 To print the parameter shapes and statistics of a trained model:
 ```bash
 python policy_print.py
 ```
 
-### D. Customizing Hyperparameters
+### F. Customizing Hyperparameters
 Modify parameters at the top of `OceanGo.py`:
 - `BOARD_SIZE`: Go board dimension (default `9` for 9x9; supports `13` or `19`).
 - `N_ITER`: Number of complete training loop iterations (default `50`).

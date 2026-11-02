@@ -64,8 +64,8 @@ MAX_REPLAY_BUFFER_SIZE = 500000
 MCTS_BATCH_SIZE = 256
 # Exploration constant for PUCT formulation. Higher = explores more unvisited tree nodes prior to exploiting.
 C_PUCT = 1.0
-# Shape of Dirichlet noise. AlphaZero uses 0.03 for 19x19 (Tweak higher like 0.1-0.3 for smaller board dimensions).
-DIRICHLET_ALPHA = 0.03
+# Shape of Dirichlet noise. AlphaZero uses 0.03 for 19x19, higher (0.15) for 9x9 to ensure healthy exploration.
+DIRICHLET_ALPHA = 0.03 if BOARD_SIZE >= 19 else 0.15
 # Ratio of the Dirichlet noise added to the root node (0.25 means 25% noise / 75% real model policy).
 DIRICHLET_EPSILON = 0.25
 
@@ -387,60 +387,123 @@ def softmax(x):
     return e / np.sum(e)
 
 # ====================================================
-#    MCTS Node & Basic MCTS (w/ policy/value net)
+#    Progress Bar Helpers
+# ====================================================
+def print_progress_bar(completed, total, start_time, prefix="Self-Play", bar_length=28):
+    """
+    Renders a live single-line progress bar:
+      Self-Play: [██████████░░░░░░░░░░] 250/500 (50.0%) | 1.8 games/s | Elapsed: 00:02:15 | ETA: 00:02:15
+    """
+    pct = completed / total if total > 0 else 1.0
+    filled = int(bar_length * pct)
+    bar = "█" * filled + "░" * (bar_length - filled)
+    
+    elapsed = max(0.001, time.time() - start_time)
+    speed = completed / elapsed
+    
+    remaining = max(0, total - completed)
+    eta_sec = int(remaining / speed) if speed > 0 else 0
+    
+    elapsed_str = time.strftime("%H:%M:%S", time.gmtime(int(elapsed)))
+    eta_str = time.strftime("%H:%M:%S", time.gmtime(eta_sec))
+    
+    output = f"\r  {prefix}: [{bar}] {completed}/{total} ({pct*100:5.1f}%) | {speed:4.1f} games/s | Elapsed: {elapsed_str} | ETA: {eta_str}"
+    sys.stdout.write(output)
+    sys.stdout.flush()
+    if completed >= total:
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+def print_train_progress(epoch, total_epochs, batch, total_batches, loss, p_loss, v_loss, start_time, bar_length=20):
+    pct = batch / total_batches if total_batches > 0 else 1.0
+    filled = int(bar_length * pct)
+    bar = "█" * filled + "░" * (bar_length - filled)
+    
+    elapsed = max(0.001, time.time() - start_time)
+    speed = batch / elapsed
+    
+    output = f"\r  Epoch {epoch}/{total_epochs} [{bar}] {batch}/{total_batches} ({pct*100:4.1f}%) | Loss: {loss:.4f} (P: {p_loss:.3f}, V: {v_loss:.3f}) | {speed:4.1f} batch/s"
+    sys.stdout.write(output)
+    sys.stdout.flush()
+    if batch >= total_batches:
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+# ====================================================
+#    MCTS Node & AlphaZero PUCT MCTS
 # ====================================================
 class NN_MCTS_Node:
-    def __init__(self, game_state: GoGame, parent=None, move=None):
+    def __init__(self, game_state: GoGame, parent=None, move=None, prior=0.0):
         self.game_state = game_state
         self.parent = parent
         self.move = move
         self.children = {}
-        self.unexpanded_moves = self.game_state.get_legal_moves()
+        self.is_expanded = False
 
-        # MCTS stats
+        # MCTS statistics
         self.N = 0
-        self.W = 0
-        self.Q = 0
-        self.virtual_loss = 0  # for parallel batched MCTS
-        self.P = 0  
-        self.policy_map = {}  
-        self.value = 0        
+        self.W = 0.0
+        self.Q = 0.0
+        self.virtual_loss = 0.0  # For parallel batched MCTS exploration
+        self.P = float(prior)    # Policy prior probability from neural network
+        self.value = 0.0         # Position value evaluation
 
 def mcts_select(root: "NN_MCTS_Node"):
+    """
+    Selects a leaf node to evaluate. Traverses expanded internal nodes
+    using the PUCT formula: Q(s, a) + U(s, a) until reaching an unexpanded
+    node or a terminal game state.
+    """
     node = root
     search_path = [node]
-    while True:
-        if len(node.unexpanded_moves) > 0:
-            mv_idx = random.randrange(len(node.unexpanded_moves))
-            mv = node.unexpanded_moves.pop(mv_idx)
-            ng = node.game_state.copy()
-            ng.make_move(*mv)
-            child_node = NN_MCTS_Node(ng, parent=node, move=mv)
-            node.children[mv] = child_node
-            search_path.append(child_node)
-            return child_node, search_path
-        if not node.children:
-            return node, search_path
-        best_score = -999999
+    while node.is_expanded and node.children and not node.game_state.is_game_over():
+        best_score = -float('inf')
         best_child = None
         
+        # Parent visit count for PUCT exploration term
+        parent_n_sqrt = math.sqrt(max(1.0, node.N + node.virtual_loss))
+        
         for mv, ch in node.children.items():
-            c_puct = C_PUCT
             total_n = ch.N + ch.virtual_loss
-            U = c_puct * ch.P * math.sqrt(node.N + node.virtual_loss) / (1 + total_n)
-            Q_val = (ch.W - ch.virtual_loss * 1.0) / total_n if total_n > 0 else 0
+            U = C_PUCT * ch.P * parent_n_sqrt / (1.0 + total_n)
+            Q_val = (ch.W - ch.virtual_loss) / total_n if total_n > 0 else 0.0
             score = Q_val + U
             if score > best_score:
                 best_score = score
                 best_child = ch
         
+        if best_child is None:
+            break
         node = best_child
         search_path.append(node)
 
-def nn_batch_evaluate(nodes, net=None, worker_id=None, req_queue=None, res_queue=None):
-    batch = []
+    return node, search_path
+
+def nn_batch_evaluate_and_expand(nodes, net=None, worker_id=None, req_queue=None, res_queue=None):
+    """
+    Evaluates leaf nodes with the neural network (or exact game rules if terminal),
+    assigns value predictions, and expands legal children with their prior probabilities.
+    """
+    eval_nodes = []
     for nd in nodes:
-        batch.append(nd.game_state.get_nn_input())
+        if nd.is_expanded:
+            continue
+        if nd.game_state.is_game_over():
+            w = nd.game_state.get_winner()
+            if w == 0:
+                nd.value = 0.0
+            elif w == nd.game_state.current_player:
+                nd.value = 1.0
+            else:
+                nd.value = -1.0
+            nd.is_expanded = True
+        else:
+            eval_nodes.append(nd)
+
+    if not eval_nodes:
+        return
+
+    batch = [nd.game_state.get_nn_input() for nd in eval_nodes]
 
     if net is not None:
         input_tensor = boards_to_tensor(batch)
@@ -452,37 +515,23 @@ def nn_batch_evaluate(nodes, net=None, worker_id=None, req_queue=None, res_queue
         req_queue.put((worker_id, batch))
         policy_logits, value_out = res_queue.get()
 
-    for i, nd in enumerate(nodes):
-        val = value_out[i]
-        nd.value = float(val)
-        p_logits = policy_logits[i]
-        legal_moves = nd.unexpanded_moves
-        board_s = nd.game_state.board_size
+    board_s = eval_nodes[0].game_state.board_size
+    for i, nd in enumerate(eval_nodes):
+        nd.value = float(value_out[i])
+        legal_moves = nd.game_state.get_legal_moves()
 
-        move_indices = []
-        for (x,y) in legal_moves:
-            if x == -1 and y == -1:
-                move_indices.append(board_s * board_s)
-            else:
-                move_indices.append(x * board_s + y)
-        selected_logits = [p_logits[idx] for idx in move_indices]
+        move_indices = [(board_s * board_s if mv == (-1, -1) else mv[0] * board_s + mv[1]) for mv in legal_moves]
+        selected_logits = [policy_logits[i][idx] for idx in move_indices]
         if len(selected_logits) > 0:
             probs = softmax(np.array(selected_logits))
         else:
             probs = []
 
-        nd.policy_map = {}
         for mv, p in zip(legal_moves, probs):
-            nd.policy_map[mv] = p
-
-def mcts_expand(node: "NN_MCTS_Node"):
-    for mv in node.unexpanded_moves:
-        ng = node.game_state.copy()
-        ng.make_move(*mv)
-        child_node = NN_MCTS_Node(ng, parent=node, move=mv)
-        child_node.P = node.policy_map.get(mv, 0.0)
-        node.children[mv] = child_node
-    node.unexpanded_moves = []
+            ng = nd.game_state.copy()
+            ng.make_move(*mv)
+            nd.children[mv] = NN_MCTS_Node(ng, parent=nd, move=mv, prior=p)
+        nd.is_expanded = True
 
 def apply_virtual_loss(search_path, loss=1.0):
     for node in search_path:
@@ -493,17 +542,23 @@ def remove_virtual_loss(search_path, loss=1.0):
         node.virtual_loss -= loss
 
 def mcts_backup(search_path, value):
-    # Backward pass for the current search path modifying true W/N 
+    """
+    Backpropagates simulation value up the search tree.
+    Because Go is a two-player zero-sum game, the value of the state for the
+    player whose turn it is translates into -value for the parent who took
+    the action leading into that state.
+    """
+    curr_v = -value
     for node in reversed(search_path):
         node.N += 1
-        node.W += value
+        node.W += curr_v
         node.Q = node.W / node.N
-        value = -value
+        curr_v = -curr_v
 
 def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0, batch_size=8, worker_id=None, req_queue=None, res_queue=None):
     sims = 0
     while sims < n_simulations:
-        # Collect a batch of leaves concurrently and apply virtual loss so paths diverge
+        # Collect a batch of unique leaves concurrently and apply virtual loss so paths diverge
         batch_paths = []
         batch_leaves = []
         
@@ -511,18 +566,15 @@ def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0, batch_size=8
         for _ in range(current_batch_size):
             leaf, path = mcts_select(root)
             if leaf in batch_leaves:
-                break # Prevents evaluating the exact same leaf redundantly in one batch (which causes hangs).
+                break # Prevents evaluating the exact same leaf redundantly in one batch
             apply_virtual_loss(path)
             batch_paths.append(path)
             batch_leaves.append(leaf)
 
-        # Batch evaluate neural network logic on completely unique paths together 
         if batch_leaves:
-            nn_batch_evaluate(batch_leaves, net=net, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
+            nn_batch_evaluate_and_expand(batch_leaves, net=net, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
 
-            # Backpropagate actual values and remove virtual loss
             for path, leaf in zip(batch_paths, batch_leaves):
-                mcts_expand(leaf)
                 remove_virtual_loss(path)
                 mcts_backup(path, leaf.value)
                 
@@ -537,13 +589,19 @@ def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0, batch_size=8
         return {}
     moves, visits = zip(*move_N)
     visits = np.array(visits, dtype=np.float32)
-    if temp < 1e-3:
+    if temp <= 0.05:
         best_idx = np.argmax(visits)
         probs = np.zeros_like(visits)
         probs[best_idx] = 1.0
     else:
         v = visits ** (1.0 / temp)
-        probs = v / np.sum(v)
+        v_sum = np.sum(v)
+        if v_sum > 0 and np.isfinite(v_sum):
+            probs = v / v_sum
+        else:
+            best_idx = np.argmax(visits)
+            probs = np.zeros_like(visits)
+            probs[best_idx] = 1.0
     policy_dict = dict(zip(moves, probs))
     return policy_dict
 
@@ -604,15 +662,15 @@ def self_play_one_game(net=None, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0
     game = GoGame(board_size)
     data = []  # store (nn_input, player, pi, z)
     move_count = 0
+    max_moves = board_size * board_size * 2  # Safety cutoff against infinite game loops
 
     logging.info(f"  Starting new self-play game {game_idx} on worker {worker_id}.")
     
-    while not game.is_game_over():
+    while not game.is_game_over() and move_count < max_moves:
         current_temp = 1.0 if move_count < 30 else 1e-3
 
         root = NN_MCTS_Node(game.copy())
-        nn_batch_evaluate([root], net=net, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
-        mcts_expand(root)
+        nn_batch_evaluate_and_expand([root], net=net, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
 
         # Add Dirichlet noise to the root node for exploration
         moves = list(root.children.keys())
@@ -740,6 +798,7 @@ def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_
     total_batches = (n_samples + batch_size - 1) // batch_size
 
     for ep in range(epochs):
+        epoch_start_time = time.time()
         np.random.shuffle(indices)
         batch_losses = []
         for batch_idx, start_idx in enumerate(range(0, n_samples, batch_size)):
@@ -765,12 +824,10 @@ def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_
             optimizer.step()
             batch_losses.append(loss.item())
 
-            # Print live progress in the terminal
-            if (batch_idx + 1) % 50 == 0 or (batch_idx + 1) == total_batches:
-                avg_recent_loss = np.mean(batch_losses[-50:])
-                print(f"  Epoch {ep+1}/{epochs} | Batch {batch_idx+1}/{total_batches} | Recent Loss: {avg_recent_loss:.4f}", end="\r")
+            # Print live progress bar in the terminal
+            if (batch_idx + 1) % 10 == 0 or (batch_idx + 1) == total_batches:
+                print_train_progress(ep + 1, epochs, batch_idx + 1, total_batches, loss.item(), policy_loss.item(), value_loss.item(), epoch_start_time)
 
-        print(f"\nEpoch {ep+1}/{epochs} Completed | Overall Avg Loss={np.mean(batch_losses):.4f}")
         logging.info(f"Epoch {ep+1}/{epochs}, Loss={np.mean(batch_losses):.4f}")
 
     net.eval()
@@ -830,11 +887,26 @@ def run_interactive_game(net):
 
     while True:
         if game.is_game_over():
+            draw_board(screen, game, last_move)
             w = game.get_winner()
             if w == 0:
-                print("Game over! It's a tie.")
+                print("\nGame over! It's a tie.")
+                logging.info("Interactive Game: Game over! It's a tie.")
+            elif w == 1:
+                print("\nGame over! You (Black) win!")
+                logging.info("Interactive Game: Game over! Player 1 (Human) won.")
             else:
-                print(f"Game over! Winner = Player {w}")
+                print("\nGame over! AI (White) wins!")
+                logging.info("Interactive Game: Game over! Player 2 (AI) won.")
+
+            print("Press any key or close the window to exit.")
+            waiting = True
+            while waiting:
+                for event in pygame.event.get():
+                    if event.type in (pygame.QUIT, pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+                        waiting = False
+                        break
+                clock.tick(15)
             pygame.quit()
             sys.exit()
 
@@ -872,67 +944,140 @@ def run_interactive_game(net):
             print("AI thinking...", end="", flush=True)
             logging.info("Interactive Game: AI thinking...")
             root = NN_MCTS_Node(game.copy())
-            nn_batch_evaluate([root], net)
-            mcts_expand(root)
+            nn_batch_evaluate_and_expand([root], net=net)
             pi_dict = mcts_run(root, net, n_simulations=N_MCTS_SIMS, batch_size=MCTS_BATCH_SIZE)
             if len(pi_dict) == 0:
-                print(" AI has no moves, passing?")
+                print(" AI has no moves, passing!")
                 logging.info("Interactive Game: AI forced pass (no moves).")
                 game.make_move(-1, -1)
-                break
-            best_move = max(pi_dict.items(), key=lambda elem: elem[1])[0]
-            if best_move == (-1, -1):
-                print(" AI passes!")
-                logging.info("Interactive Game: AI voluntarily passed.")
+                last_move = (-1, -1)
             else:
-                print(f" AI plays: {best_move}")
-                logging.info(f"Interactive Game: AI played: {best_move}")
-            game.make_move(*best_move)
-            last_move = best_move
+                best_move = max(pi_dict.items(), key=lambda elem: elem[1])[0]
+                if best_move == (-1, -1):
+                    print(" AI passes!")
+                    logging.info("Interactive Game: AI voluntarily passed.")
+                else:
+                    print(f" AI plays: {best_move}")
+                    logging.info(f"Interactive Game: AI played: {best_move}")
+                game.make_move(*best_move)
+                last_move = best_move
 
 def main():
     init_environment()
     parser = argparse.ArgumentParser(description="OceanGo - AlphaZero styled Go AI")
     parser.add_argument("--model", type=str, default="", help="Path to specific model to load (e.g. checkpoints/policy_value_net_iter_5.pth)")
-    parser.add_argument("--play", action="store_true", help="Play interactively immediately without training")
+    parser.add_argument("--play", action="store_true", help="Play interactively immediately with the Pygame window")
+    parser.add_argument("--train", action="store_true", help="Start AlphaZero self-play training loop")
+    parser.add_argument("--dry-run", action="store_true", help="Run a quick 5-second sanity test of self-play, MCTS, and neural training")
+    parser.add_argument("--save-dir", type=str, default="checkpoints", help="Directory where checkpoints and models will be saved")
+    parser.add_argument("--games", type=int, default=N_GAMES_PER_ITER, help=f"Number of self-play games per iteration (default: {N_GAMES_PER_ITER})")
+    parser.add_argument("--sims", type=int, default=N_MCTS_SIMS, help=f"Number of MCTS simulations per move (default: {N_MCTS_SIMS})")
+    parser.add_argument("--iters", type=int, default=N_ITER, help=f"Number of outer loop iterations (default: {N_ITER})")
     args = parser.parse_args()
 
     # 1) Create or load network
     net = PolicyValueNet(board_size=BOARD_SIZE).to(device)
     
-    # Decide which model to load from parameters or fallback to latest.
-    load_path = args.model if args.model else "policy_value_net.pth"
+    # Detect highest existing iteration checkpoint in save_dir for seamless auto-resume
+    start_iter = 0
+    latest_iter_path = ""
+    if os.path.isdir(args.save_dir):
+        for fname in os.listdir(args.save_dir):
+            if fname.startswith("policy_value_net_iter_") and fname.endswith(".pth"):
+                num_Part = fname[len("policy_value_net_iter_"):-len(".pth")]
+                if num_Part.isdigit():
+                    it_num = int(num_Part)
+                    if it_num > start_iter:
+                        start_iter = it_num
+                        latest_iter_path = os.path.join(args.save_dir, fname)
+
+    # Decide which model to load: explicit --model > save_dir/policy_value_net.pth > save_dir/latest_iter > ./policy_value_net.pth
+    if args.model:
+        load_path = args.model
+    elif os.path.isfile(os.path.join(args.save_dir, "policy_value_net.pth")):
+        load_path = os.path.join(args.save_dir, "policy_value_net.pth")
+    elif latest_iter_path and os.path.isfile(latest_iter_path):
+        load_path = latest_iter_path
+    else:
+        load_path = "policy_value_net.pth"
     
     if os.path.isfile(load_path):
         print(f"Loading existing model parameters from {load_path}...")
         logging.info(f"Loading existing model parameters from {load_path}")
         net.load_state_dict(torch.load(load_path, map_location=device))
+        if start_iter > 0 and not args.dry_run and not args.play:
+            print(f"Detected checkpoint history up to iteration {start_iter}. Will resume from iteration {start_iter + 1}.")
+            logging.info(f"Resuming training from iteration {start_iter + 1}.")
     else:
+        start_iter = 0
         print("No existing model found. Starting from scratch.")
         logging.info("No existing model found. Starting a fresh model.")
     net.eval()
 
-    # If the user just wants to play against the loaded model, boot up the UI and exit the script after the game.
-    if args.play:
-        print("Starting interactive game...")
+    # Handle Dry-Run verification mode immediately (no prompts)
+    if args.dry_run:
+        print("\n[Dry-Run] Running quick end-to-end verification...")
+        print(f"[Dry-Run] Hardware Device: {device_name} ({device.type.upper()})")
+        t0 = time.time()
+        test_data = self_play_one_game(net=net, board_size=BOARD_SIZE, n_mcts_sims=5, game_idx=1)
+        print(f"[Dry-Run] 1 self-play game completed ({len(test_data)} states generated in {time.time()-t0:.2f}s).")
+        aug_data = get_equi_data(test_data)
+        print(f"[Dry-Run] Symmetrical augmentation produced {len(aug_data)} training samples.")
+        print("[Dry-Run] Testing neural network backpropagation pass...")
+        train_policy_value_net(net, aug_data, batch_size=min(16, len(aug_data)), epochs=1, lr=LEARNING_RATE)
+        os.makedirs(args.save_dir, exist_ok=True)
+        test_save_path = os.path.join(args.save_dir, "dry_run_test.pth")
+        torch.save(net.state_dict(), test_save_path)
+        print(f"[Dry-Run] Checkpoint write confirmed: {test_save_path}")
+        print("[Dry-Run] SUCCESS: Everything is functional and verified ready for full training!\n")
+        return
+
+    # Determine mode: Play or Train
+    should_play = args.play
+    if not args.play and not args.train:
+        print("\nSelect OceanGo Mode:")
+        print("  [1] Play Go interactively (Pygame Window) [Default]")
+        print("  [2] Start AlphaZero AI Self-Play Training")
+        choice = ""
+        try:
+            if sys.stdin.isatty():
+                choice = input("\nEnter choice (1 or 2, default is 1): ").strip()
+            else:
+                choice = "1"
+        except (EOFError, KeyboardInterrupt):
+            choice = "1"
+
+        if choice == "2":
+            should_play = False
+        else:
+            should_play = True
+
+    # If the user wants to play against the model, boot up the UI and exit after the game.
+    if should_play:
+        print("Starting interactive Pygame window...")
+        logging.info("Starting interactive Pygame window.")
         run_interactive_game(net)
         return
 
-    checkpoints_dir = "checkpoints"
+    checkpoints_dir = args.save_dir
     os.makedirs(checkpoints_dir, exist_ok=True)
+    n_games = args.games
+    n_sims = args.sims
+    n_iters = args.iters
 
     # 2) Self-play / 3) Train 
     total_start_time = time.time()
+    end_iter = n_iters if start_iter < n_iters else start_iter + n_iters
 
-    for iteration in range(N_ITER):
+    for iteration in range(start_iter, end_iter):
         iteration_start_time = time.time()
-        print(f"==== Self-Play iteration {iteration+1} ====")
-        logging.info(f"==== Self-Play iteration {iteration+1} ====")
+        print(f"==== Self-Play iteration {iteration+1}/{end_iter} ====")
+        logging.info(f"==== Self-Play iteration {iteration+1}/{end_iter} ====")
 
         # Gather data from self-play (Parallelized)
         iteration_data = []
-        print(f"  Starting {N_GAMES_PER_ITER} self-play games simultaneously (Parallel Execution)...")
-        logging.info(f"  Starting {N_GAMES_PER_ITER} parallel games in iteration {iteration+1}...")
+        print(f"  Starting {n_games} self-play games simultaneously (Parallel Execution)...")
+        logging.info(f"  Starting {n_games} parallel games in iteration {iteration+1}...")
 
         # Dispatch parallel self-play games explicitly via multi-processing (Bypasses Python GIL)
         print(f"  Allocating {PARALLEL_THREADS} parallel processing cores (Central GPU Queue Mode).")
@@ -948,32 +1093,28 @@ def main():
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=PARALLEL_THREADS) as executor:
             futures = []
-            games_per_worker = max(1, N_GAMES_PER_ITER // PARALLEL_THREADS)
+            games_per_worker = max(1, n_games // PARALLEL_THREADS)
             
             for w_id in range(PARALLEL_THREADS):
                 num_games = games_per_worker
                 if w_id == PARALLEL_THREADS - 1:
-                    num_games = N_GAMES_PER_ITER - games_per_worker * (PARALLEL_THREADS - 1)
+                    num_games = n_games - games_per_worker * (PARALLEL_THREADS - 1)
                 
                 if num_games > 0:
-                    f = executor.submit(self_play_wrapper, BOARD_SIZE, N_MCTS_SIMS, 1.0, w_id, num_games, req_queue, res_queues[w_id], progress_queue)
+                    f = executor.submit(self_play_wrapper, BOARD_SIZE, n_sims, 1.0, w_id, num_games, req_queue, res_queues[w_id], progress_queue)
                     futures.append(f)
             
             completed_games = 0
             iteration_games_start_time = time.time()
             
-            # Progress reporting loop
-            while completed_games < N_GAMES_PER_ITER:
+            # Live Progress Bar Loop
+            while completed_games < n_games:
                 try:
-                    progress_queue.get(timeout=1.0)
+                    progress_queue.get(timeout=0.5)
                     completed_games += 1
-                    elapsed = time.time() - iteration_games_start_time
-                    avg_time = elapsed / completed_games
-                    remaining = N_GAMES_PER_ITER - completed_games
-                    eta_seconds = int(avg_time * remaining)
-                    eta_str = time.strftime('%Hh %Mm %Ss', time.gmtime(eta_seconds))
-                    print(f"  --> Finished game {completed_games}/{N_GAMES_PER_ITER} | ETA: {eta_str}")
-                    logging.info(f"  Finished game {completed_games}/{N_GAMES_PER_ITER} | ETA: {eta_str}")
+                    print_progress_bar(completed_games, n_games, iteration_games_start_time, prefix="Self-Play")
+                    if completed_games % 25 == 0 or completed_games == n_games:
+                        logging.info(f"  Self-play progress: {completed_games}/{n_games} games completed.")
                 except queue.Empty:
                     pass
             
@@ -1007,7 +1148,10 @@ def main():
         torch.save(net.state_dict(), "policy_value_net.pth")
         checkpoint_path = os.path.join(checkpoints_dir, f"policy_value_net_iter_{iteration+1}.pth")
         torch.save(net.state_dict(), checkpoint_path)
-        print("Model state saved sequentially.")
+        # Also copy to checkpoints_dir/policy_value_net.pth if saving to custom dir (e.g. Google Drive)
+        if checkpoints_dir != "." and checkpoints_dir != "checkpoints":
+            torch.save(net.state_dict(), os.path.join(checkpoints_dir, "policy_value_net.pth"))
+        print(f"Model state saved sequentially to {checkpoint_path}.")
         logging.info(f"Model saved at iteration {iteration+1} to checkpoint folder and base 'policy_value_net.pth'.")
 
         iteration_end_time = time.time()
@@ -1016,10 +1160,8 @@ def main():
 
     total_end_time = time.time()
     total_selfplay_time = total_end_time - total_start_time
+    print(f"\nTraining complete! Total time: {total_selfplay_time:.2f}s. Final checkpoints saved to '{checkpoints_dir}'.")
     logging.info(f"Total self-play time across all iterations: {total_selfplay_time:.2f} seconds.")
-
-    # 5) Launch an interactive game with the trained net
-    run_interactive_game(net)
 
 if __name__ == "__main__":
     mp.freeze_support()

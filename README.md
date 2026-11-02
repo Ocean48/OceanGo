@@ -13,7 +13,7 @@ The overarching goal of OceanGo is to implement an AlphaGo-like algorithm capabl
 While DeepMind's Alpha systems required massive clusters of custom TPUs to train, OceanGo establishes a framework scaled to train and execute on a **single computer with a single CPU and GPU**. It proves that the mathematical principles and architectures of AlphaZero can be structured and understood within the scope of a bachelor's degree timeline using individual consumer hardware.
 
 ## Key Technical Features
-The theoretical backbone of this engine replicates modern reinforcement learning techniques:
+The theoretical backbone of this engine replicates modern reinforcement learning techniques (detailed mathematical derivations and diagrams are available in [ARCHITECTURE.md](ARCHITECTURE.md)):
 * **Deep Residual Network (ResNet)**: A deep convolutional neural network utilizing residual blocks to evaluate board states, outputting both move probabilities (Policy Head) and win/loss predictions (Value Head).
 * **State History & Input Planes**: Feeds the neural network the last 8 board states along with player perspective channels, granting the AI an understanding of "momentum" and complex situational tactics like the Ko rule.
 * **Monte Carlo Tree Search (MCTS)**: Advanced forecasting of possible move outcomes utilizing PUCT (Predictor Upper Confidence Bounds). By default, it runs exactly **800 simulations per move**, mirroring the DeepMind paper.
@@ -65,22 +65,24 @@ python t.py
 *(Automated setup scripts are also included: run `./setup_venv.sh` on macOS or `setup_venv.bat` on Windows 11).*
 
 ### 2. Playing Against the AI
-To immediately play a game on the interactive Pygame board against the latest model:
+To launch the interactive Pygame window:
 ```bash
-python OceanGo.py --play
+python OceanGo.py
 ```
-*(Note: `python GPU.py --play` also works as a backwards-compatible alias).*
+*(Simply press Enter at the prompt, or pass `--play` to jump straight in: `python OceanGo.py --play`)*.
 - Click on board intersections to place stones.
 - Press **`P`** on your keyboard to pass your turn.
 - To play against a specific historical snapshot:
   `python OceanGo.py --model checkpoints/policy_value_net_iter_3.pth --play`
 
 ### 3. Training the AI
-To start the AlphaZero self-play and training loop from scratch (or continue from an existing `policy_value_net.pth` model on disk):
+To start the AlphaZero self-play and training loop directly on your local computer:
 ```bash
-python OceanGo.py
+python OceanGo.py --train
 ```
-This command spins up parallel processes to generate self-play data, evaluates positions, and begins training the ResNet.
+
+#### Training in the Cloud with Google Colab (Free or Pro)
+To train using Google Colab GPUs and automatically save checkpoints to Google Drive, see **[`COLAB_GUIDE.md`](COLAB_GUIDE.md)** and use the pre-configured notebook **[`OceanGo_Colab.ipynb`](OceanGo_Colab.ipynb)**.
 
 ---
 *Developed for the University of Windsor Computer Science Program.*
