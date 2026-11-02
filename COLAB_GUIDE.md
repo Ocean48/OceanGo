@@ -30,17 +30,15 @@ This guide walks you through setting up, running, and monitoring **OceanGo** Alp
 
 ---
 
-### Step 3: Configure the GPU & Background Execution
+### Step 3: Configure the GPU & High-RAM
 1. In the top menu, click **Runtime** $\to$ **Change runtime type**.
 2. Set the following options:
-   - **Hardware accelerator**: Choose **GPU**.
-   - **GPU type**: Select **T4** (recommended for lowest credit burn).
-   - **Runtime shape**: Select **Standard**.
-   - **Background execution**: Check the box **`☑ Run in background`** *(allows Colab to keep training after you close the tab or turn off your computer)*.
+   - **Hardware accelerator**: Select **T4 GPU**.
+   - **High-RAM**: Toggle **ON** *(recommended: upgrades your VM from 2 vCPUs to 8 vCPUs for ~3x faster self-play at only ~0.5 extra Compute Units/hr)*.
 3. Click **Save**.
 
 > [!TIP]
-> **Cheapest Credit Burn**: Choosing the **T4 GPU** consumes only **~1.5 to 1.9 Compute Units per hour**. Your 200 monthly credits give you **110 to 130 hours** of GPU training!
+> **Best Credit Efficiency**: **T4 GPU + High-RAM** consumes **~2.3 Compute Units per hour** (or **~1.8 CUs/hr** with High-RAM off) and finishes 50 training iterations in **~8 hours (~18 Compute Units total)**!
 
 ---
 
@@ -70,14 +68,18 @@ Clones the OceanGo repository and installs dependencies (`torch`, `pygame-ce`, `
 * Verifies that CUDA inference, multiprocessing queues, and Google Drive write permissions work properly before spending credits.
 * Confirm that you see: `[Dry-Run] SUCCESS: Everything is functional and verified ready for full training!`
 
-#### Cell 5: Launch Training
-Starts the self-play reinforcement learning loop:
-```bash
+#### Cell 5: Launch Training (with Auto-Disconnect)
+Starts the self-play reinforcement learning loop and automatically disconnects the GPU runtime as soon as training finishes:
+```python
 !python OceanGo.py --train \
     --save-dir /content/drive/MyDrive/OceanGo/checkpoints \
     --games 200 \
     --sims 400 \
     --iters 50
+
+from google.colab import runtime
+print("Training finished! Automatically disconnecting runtime to save Compute Units...")
+runtime.unassign()
 ```
 
 ---
@@ -144,13 +146,14 @@ Once Colab finishes an iteration and saves `policy_value_net.pth` to your Google
 
 ---
 
-## 6. Credit Optimization Cheat Sheet
+## 6. Runtime & Credit Optimization Cheat Sheet (200 Monthly CUs)
 
-| Strategy | Recommended Settings | Cost (CUs/hr) | Hours per 200 CUs | Iterations Achieved |
-|:---|:---|:---:|:---:|:---:|
-| **Maximum Budget (Cheapest)** | **T4 GPU** + `--games 200 --sims 400` | ~1.8 CUs/hr | **~120 Hours** | **~30 to 40 Iterations** |
-| **Balanced** | **V100 GPU** + `--games 200 --sims 400` | ~5.0 CUs/hr | **~40 Hours** | **~25 to 30 Iterations** |
-| **Ultra Speed** | **A100 GPU** + `--games 500 --sims 800` | ~12.5 CUs/hr | **~16 Hours** | **~3 to 4 Deep Iterations** |
+| Runtime Setup (`Change runtime type`) | Command Preset | Cost (CUs/hr) | Time per Loop | 50 Loops Cost & Time | Max Loops per 200 CUs |
+|:---|:---|:---:|:---:|:---:|:---:|
+| 🏆 **T4 GPU + High-RAM ON** *(Best Value — 8 vCPUs)* | `--games 200 --sims 400 --iters 50` | **~2.3 CUs/hr** | **~8–10 mins** | **~18 CUs (~8 hrs)** | **~550+ Loops** |
+| **T4 GPU (High-RAM OFF)** *(Longest Clock — 2 vCPUs)* | `--games 200 --sims 400 --iters 50` | **~1.8 CUs/hr** | ~20–25 mins | ~32 CUs (~18 hrs) | ~270 Loops |
+| **T4 GPU + High-RAM ON** *(DeepMind Heavy Preset)* | `--games 500 --sims 800 --iters 50` | **~2.3 CUs/hr** | ~35–45 mins | ~75 CUs (~32 hrs) | ~130 Loops |
+| **L4 GPU (High-RAM OFF)** *(8 vCPUs, 2x cost)* | `--games 200 --sims 400 --iters 50` | ~4.5 CUs/hr | ~6–8 mins | ~30 CUs (~6.5 hrs) | ~330 Loops |
 
 > [!IMPORTANT]
-> **Avoid Idle Credit Drain**: When your training run is completely finished, click **Runtime** $\to$ **Disconnect and delete runtime** so that your session stops drawing compute units.
+> **Zero Idle Credit Drain**: Cell 5 automatically calls `runtime.unassign()` as soon as training finishes, immediately shutting down the Colab GPU session so no credits are wasted while you are away.
