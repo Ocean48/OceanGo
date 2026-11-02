@@ -11,6 +11,7 @@ import multiprocessing as mp
 import threading
 import queue
 import platform
+from collections import deque
 import numpy as np
 import pygame
 import torch
@@ -60,14 +61,47 @@ TRAIN_SAMPLE_SIZE = 250000
 MAX_REPLAY_BUFFER_SIZE = 500000
 
 # MCTS Setup
-# Number of MCTS leaves to evaluate in parallel on the GPU. Higher = better GPU utilization during search.
-MCTS_BATCH_SIZE = 256
+# Intra-tree virtual-loss batch size per game worker (16 keeps PUCT tree exploration sharp while still batching).
+MCTS_BATCH_SIZE = 16
+# Maximum number of inference requests coalesced simultaneously by the central GPU server across workers.
+GPU_SERVER_BATCH_SIZE = 512
 # Exploration constant for PUCT formulation. Higher = explores more unvisited tree nodes prior to exploiting.
 C_PUCT = 1.0
-# Shape of Dirichlet noise. AlphaZero uses 0.03 for 19x19, higher (0.15) for 9x9 to ensure healthy exploration.
-DIRICHLET_ALPHA = 0.03 if BOARD_SIZE >= 19 else 0.15
+# Shape of Dirichlet noise. Scales inversely with board area (0.03 for 19x19, 0.06 for 13x13, 0.15 for 9x9).
+DIRICHLET_ALPHA = 0.03 if BOARD_SIZE >= 19 else (0.06 if BOARD_SIZE >= 13 else 0.15)
 # Ratio of the Dirichlet noise added to the root node (0.25 means 25% noise / 75% real model policy).
 DIRICHLET_EPSILON = 0.25
+
+
+def get_dirichlet_alpha(board_size: int) -> float:
+    """Scales Dirichlet concentration parameter inversely with board intersections (AlphaZero scaling)."""
+    if board_size >= 19:
+        return 0.03
+    if board_size >= 13:
+        return 0.06
+    return 0.15
+
+
+def get_temp_threshold(board_size: int) -> int:
+    """
+    Returns the move number after which self-play temperature drops from 1.0 (exploratory)
+    to 1e-3 (greedy). Scales dynamically so exploration covers the opening (~15% of game length)
+    on 9x9 (10 moves), 13x13 (16 moves), and 19x19 (30 moves, matching DeepMind AlphaGo Zero).
+    """
+    if board_size >= 19:
+        return 30
+    if board_size >= 13:
+        return 16
+    return 10
+
+
+def get_scheduled_lr(iteration: int, base_lr: float = 0.01) -> float:
+    """AlphaGo Zero style step-decay learning rate schedule across training iterations."""
+    if iteration < 20:
+        return base_lr
+    if iteration < 40:
+        return base_lr * 0.1
+    return base_lr * 0.01
 
 # Neural Network Setup
 # Number of convolutional filters per ResNet block (AlphaZero used 256; use 64-128 for consumer GPUs).
@@ -246,27 +280,43 @@ class GoGame:
         return self._try_move(x, y)
 
     def _try_move(self, x, y):
+        opponent = 3 - self.current_player
+        b_size = self.board_size
+
+        # Temporarily place stone on board to test captures and liberties without copying
+        self.board[x, y] = self.current_player
+
+        captured_neighbors = []
+        has_direct_empty = False
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < b_size and 0 <= ny < b_size:
+                cell = self.board[nx, ny]
+                if cell == 0:
+                    has_direct_empty = True
+                elif cell == opponent:
+                    if not self._has_liberty((nx, ny), self.board):
+                        captured_neighbors.append((nx, ny))
+
+        # Fast path (>95% of moves): no opponent groups are captured
+        if not captured_neighbors:
+            has_lib = has_direct_empty or self._has_liberty((x, y), self.board)
+            if not has_lib:
+                self.board[x, y] = 0
+                return False
+            board_hash = self.board.tobytes()
+            self.board[x, y] = 0
+            return board_hash not in self.history
+
+        # Capture path: copy board, remove captured opponent groups, and check positional superko
+        # (Suicide is impossible when adjacent opponent stones are captured, as their removal creates liberties)
         temp_board = self.board.copy()
-        temp_board[x, y] = self.current_player
-        
-        # Remove captures
-        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-            nx, ny = x+dx, y+dy
-            if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
-                if temp_board[nx, ny] == 3 - self.current_player:
-                    if not self._has_liberty((nx, ny), temp_board):
-                        self._remove_group((nx, ny), temp_board)
-        
-        # Check suicide
-        if not self._has_liberty((x, y), temp_board):
-            return False
-            
-        # Check Ko (positional superko)
-        board_hash = temp_board.tobytes()
-        if board_hash in self.history:
-            return False
-            
-        return True
+        self.board[x, y] = 0
+        for c_pos in captured_neighbors:
+            if temp_board[c_pos[0], c_pos[1]] == opponent:
+                self._remove_group(c_pos, temp_board)
+
+        return temp_board.tobytes() not in self.history
 
     def make_move(self, x, y, check_valid=True):
         if check_valid and not self.is_valid_move(x, y):
@@ -279,7 +329,7 @@ class GoGame:
             self.board[x, y] = self.current_player
             
             # Remove captures
-            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 nx, ny = x+dx, y+dy
                 if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
                     if self.board[nx, ny] == 3 - self.current_player:
@@ -295,38 +345,45 @@ class GoGame:
         return True
 
     def _has_liberty(self, start, board_state):
-        from collections import deque
-        color = board_state[start[0], start[1]]
-        visited = set()
+        b_size = self.board_size
+        sx, sy = start
+        # Immediate O(1) neighbor check before allocating BFS structures
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = sx + dx, sy + dy
+            if 0 <= nx < b_size and 0 <= ny < b_size and board_state[nx, ny] == 0:
+                return True
+
+        color = board_state[sx, sy]
+        visited = {(sx, sy)}
         q = deque([start])
         while q:
             cx, cy = q.pop()
-            if (cx, cy) not in visited:
-                visited.add((cx, cy))
-                for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-                    nx, ny = cx+dx, cy+dy
-                    if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
-                        if board_state[nx, ny] == 0:
-                            return True
-                        if board_state[nx, ny] == color and (nx, ny) not in visited:
-                            q.append((nx, ny))
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = cx + dx, cy + dy
+                if 0 <= nx < b_size and 0 <= ny < b_size:
+                    cell = board_state[nx, ny]
+                    if cell == 0:
+                        return True
+                    if cell == color and (nx, ny) not in visited:
+                        visited.add((nx, ny))
+                        q.append((nx, ny))
         return False
 
     def _remove_group(self, start, board_state):
-        from collections import deque
-        color = board_state[start[0], start[1]]
-        visited = set()
+        b_size = self.board_size
+        sx, sy = start
+        color = board_state[sx, sy]
+        visited = {(sx, sy)}
         q = deque([start])
         while q:
             cx, cy = q.pop()
-            if (cx, cy) not in visited:
-                visited.add((cx, cy))
-                board_state[cx, cy] = 0
-                for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-                    nx, ny = cx+dx, cy+dy
-                    if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
-                        if board_state[nx, ny] == color and (nx, ny) not in visited:
-                            q.append((nx, ny))
+            board_state[cx, cy] = 0
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = cx + dx, cy + dy
+                if 0 <= nx < b_size and 0 <= ny < b_size:
+                    if board_state[nx, ny] == color and (nx, ny) not in visited:
+                        visited.add((nx, ny))
+                        q.append((nx, ny))
 
     def get_legal_moves(self):
         if self._legal_moves_cache is not None:
@@ -340,21 +397,7 @@ class GoGame:
         return moves
 
     def is_game_over(self):
-        if self.passes_in_a_row >= 2:
-            return True
-        if self._is_game_over_cache is not None:
-            return self._is_game_over_cache
-        if self._legal_moves_cache is not None:
-            self._is_game_over_cache = len(self._legal_moves_cache) <= 1
-            return self._is_game_over_cache
-        # Early-exit scan: stop as soon as any single legal board placement is found
-        for x in range(self.board_size):
-            for y in range(self.board_size):
-                if self.board[x, y] == 0 and self._try_move(x, y):
-                    self._is_game_over_cache = False
-                    return False
-        self._is_game_over_cache = True
-        return True
+        return self.passes_in_a_row >= 2
 
     def get_winner(self):
         # Chinese area scoring with Komi
@@ -367,7 +410,6 @@ class GoGame:
         for r in range(self.board_size):
             for c in range(self.board_size):
                 if self.board[r, c] == 0 and (r, c) not in visited:
-                    from collections import deque
                     q = deque([(r, c)])
                     group = set([(r, c)])
                     touches_black = False
@@ -376,7 +418,7 @@ class GoGame:
                     while q:
                         cx, cy = q.pop()
                         visited.add((cx, cy))
-                        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                             nx, ny = cx+dx, cy+dy
                             if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
                                 if self.board[nx, ny] == 1:
@@ -656,7 +698,7 @@ def gpu_server_thread(net, req_queue, res_queues, total_workers):
                 active_workers -= 1
                 continue
             requests.append(req)
-            while len(requests) < 512:
+            while len(requests) < GPU_SERVER_BATCH_SIZE:
                 try:
                     req = req_queue.get_nowait()
                     if req == "DONE":
@@ -700,19 +742,24 @@ def self_play_one_game(net=None, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0
     data = []  # store (nn_input, player, pi, z)
     move_count = 0
     max_moves = board_size * board_size * 2  # Safety cutoff against infinite game loops
+    temp_threshold = get_temp_threshold(board_size)
+    dirichlet_alpha = get_dirichlet_alpha(board_size)
 
-    logging.info(f"  Starting new self-play game {game_idx} on worker {worker_id}.")
+    logging.info(f"  Starting new self-play game {game_idx} on worker {worker_id} (board={board_size}x{board_size}).")
     
     while not game.is_game_over() and move_count < max_moves:
-        current_temp = 1.0 if move_count < 30 else 1e-3
+        current_temp = 1.0 if move_count < temp_threshold else 1e-3
 
         root = NN_MCTS_Node(game.copy())
         nn_batch_evaluate_and_expand([root], net=net, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
+        root.N = 1
+        root.W = -root.value
+        root.Q = -root.value
 
         # Add Dirichlet noise to the root node for exploration
         moves = list(root.children.keys())
         if len(moves) > 0:
-            noise = np.random.dirichlet([DIRICHLET_ALPHA] * len(moves))
+            noise = np.random.dirichlet([dirichlet_alpha] * len(moves))
             for i, mv in enumerate(moves):
                 root.children[mv].P = (1.0 - DIRICHLET_EPSILON) * root.children[mv].P + DIRICHLET_EPSILON * noise[i]
 
@@ -807,14 +854,18 @@ def sample_from_replay_buffer(sample_size=1024):
 # ====================================================
 #          Training the Network
 # ====================================================
-def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_EPOCHS, lr=LEARNING_RATE):
+def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_EPOCHS, lr=LEARNING_RATE, optimizer=None):
     """
     data: list of (nn_input, current_player, pi_flat, z)
     We'll do:
       - policy loss (cross entropy w.r.t. pi_flat)
       - value loss (MSE vs. z)
     """
-    optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
+    if optimizer is None:
+        optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
+    else:
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = lr
     use_amp = (device.type == "cuda")
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     net.train()
@@ -877,37 +928,46 @@ def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_
 #             Putting it All Together
 # ====================================================
 def run_interactive_game(net):
-    pygame.init()
-    screen = pygame.display.set_mode((SCREEN_SIZE, SCREEN_SIZE))
-    pygame.display.set_caption("Go Game (NN MCTS)")
+    board_size = net.board_size
+    screen_size = (board_size + 1) * GRID_SIZE
 
-    game = GoGame(BOARD_SIZE)
+    pygame.init()
+    screen = pygame.display.set_mode((screen_size, screen_size))
+    pygame.display.set_caption(f"OceanGo ({board_size}x{board_size} NN MCTS)")
+
+    game = GoGame(board_size)
     clock = pygame.time.Clock()
     last_move = None
 
     def draw_board(screen, g: GoGame, last_mv):
         # Wood board color
         screen.fill((220, 179, 92))
-        for i in range(1, BOARD_SIZE + 1):
+        for i in range(1, board_size + 1):
             pygame.draw.line(screen, (0,0,0),
                              (i*GRID_SIZE, GRID_SIZE),
-                             (i*GRID_SIZE, SCREEN_SIZE - GRID_SIZE), 2)
+                             (i*GRID_SIZE, screen_size - GRID_SIZE), 2)
             pygame.draw.line(screen, (0,0,0),
                              (GRID_SIZE, i*GRID_SIZE),
-                             (SCREEN_SIZE - GRID_SIZE, i*GRID_SIZE), 2)
+                             (screen_size - GRID_SIZE, i*GRID_SIZE), 2)
                              
-        # Draw star points (Hoshi) for 19x19 board
-        if BOARD_SIZE == 19:
+        # Draw star points (Hoshi) for 9x9, 13x13, and 19x19 boards
+        if board_size == 19:
             star_points = [(3, 3), (3, 9), (3, 15),
                            (9, 3), (9, 9), (9, 15),
                            (15, 3), (15, 9), (15, 15)]
-            for sx, sy in star_points:
-                px = (sy + 1) * GRID_SIZE
-                py = (sx + 1) * GRID_SIZE
-                pygame.draw.circle(screen, (0,0,0), (px, py), 4)
+        elif board_size == 13:
+            star_points = [(3, 3), (3, 9), (6, 6), (9, 3), (9, 9)]
+        elif board_size == 9:
+            star_points = [(2, 2), (2, 6), (4, 4), (6, 2), (6, 6)]
+        else:
+            star_points = []
+        for sx, sy in star_points:
+            px = (sy + 1) * GRID_SIZE
+            py = (sx + 1) * GRID_SIZE
+            pygame.draw.circle(screen, (0,0,0), (px, py), 4)
 
-        for x in range(BOARD_SIZE):
-            for y in range(BOARD_SIZE):
+        for x in range(board_size):
+            for y in range(board_size):
                 cell = g.board[x,y]
                 cx = (y+1)*GRID_SIZE
                 cy = (x+1)*GRID_SIZE
@@ -968,7 +1028,7 @@ def run_interactive_game(net):
                     px, py = event.pos
                     grid_x = round((py/GRID_SIZE) - 1)
                     grid_y = round((px/GRID_SIZE) - 1)
-                    if 0 <= grid_x < BOARD_SIZE and 0 <= grid_y < BOARD_SIZE:
+                    if 0 <= grid_x < board_size and 0 <= grid_y < board_size:
                         x,y = grid_x, grid_y
             if x is not None:
                 if game.is_valid_move(x,y):
@@ -986,7 +1046,10 @@ def run_interactive_game(net):
             logging.info("Interactive Game: AI thinking...")
             root = NN_MCTS_Node(game.copy())
             nn_batch_evaluate_and_expand([root], net=net)
-            pi_dict = mcts_run(root, net, n_simulations=N_MCTS_SIMS, batch_size=MCTS_BATCH_SIZE)
+            root.N = 1
+            root.W = -root.value
+            root.Q = -root.value
+            pi_dict = mcts_run(root, net, n_simulations=N_MCTS_SIMS, temp=1e-3, batch_size=MCTS_BATCH_SIZE)
             if len(pi_dict) == 0:
                 print(" AI has no moves, passing!")
                 logging.info("Interactive Game: AI forced pass (no moves).")
@@ -1004,6 +1067,7 @@ def run_interactive_game(net):
                 last_move = best_move
 
 def main():
+    global BOARD_SIZE, SCREEN_SIZE, DIRICHLET_ALPHA
     init_environment()
     parser = argparse.ArgumentParser(description="OceanGo - AlphaZero styled Go AI")
     parser.add_argument("--model", type=str, default="", help="Path to specific model to load (e.g. checkpoints/policy_value_net_iter_5.pth)")
@@ -1011,13 +1075,15 @@ def main():
     parser.add_argument("--train", action="store_true", help="Start AlphaZero self-play training loop")
     parser.add_argument("--dry-run", action="store_true", help="Run a quick 5-second sanity test of self-play, MCTS, and neural training")
     parser.add_argument("--save-dir", type=str, default="checkpoints", help="Directory where checkpoints and models will be saved")
+    parser.add_argument("--board-size", type=int, default=BOARD_SIZE, help=f"Go board dimension: 9, 13, or 19 (default: {BOARD_SIZE})")
     parser.add_argument("--games", type=int, default=N_GAMES_PER_ITER, help=f"Number of self-play games per iteration (default: {N_GAMES_PER_ITER})")
     parser.add_argument("--sims", type=int, default=N_MCTS_SIMS, help=f"Number of MCTS simulations per move (default: {N_MCTS_SIMS})")
     parser.add_argument("--iters", type=int, default=N_ITER, help=f"Number of outer loop iterations (default: {N_ITER})")
     args = parser.parse_args()
 
-    # 1) Create or load network
-    net = PolicyValueNet(board_size=BOARD_SIZE).to(device)
+    BOARD_SIZE = args.board_size
+    SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE
+    DIRICHLET_ALPHA = get_dirichlet_alpha(BOARD_SIZE)
     
     # Detect highest existing iteration checkpoint in save_dir for seamless auto-resume
     start_iter = 0
@@ -1041,24 +1107,45 @@ def main():
         load_path = latest_iter_path
     else:
         load_path = "policy_value_net.pth"
+
+    # 1) Create or load network
+    net = PolicyValueNet(board_size=BOARD_SIZE).to(device)
     
     if os.path.isfile(load_path):
-        print(f"Loading existing model parameters from {load_path}...")
-        logging.info(f"Loading existing model parameters from {load_path}")
-        net.load_state_dict(torch.load(load_path, map_location=device))
-        if start_iter > 0 and not args.dry_run and not args.play:
-            print(f"Detected checkpoint history up to iteration {start_iter}. Will resume from iteration {start_iter + 1}.")
-            logging.info(f"Resuming training from iteration {start_iter + 1}.")
+        state_dict = torch.load(load_path, map_location=device)
+        # Check if the checkpoint matches the requested board size
+        expected_actions = BOARD_SIZE * BOARD_SIZE + 1
+        ckpt_actions = state_dict["policy_fc.weight"].shape[0] if "policy_fc.weight" in state_dict else expected_actions
+        if ckpt_actions != expected_actions:
+            ckpt_board = int(round(math.sqrt(ckpt_actions - 1)))
+            if args.model:
+                print(f"Checkpoint '{load_path}' was trained on {ckpt_board}x{ckpt_board}; adjusting BOARD_SIZE to {ckpt_board}.")
+                BOARD_SIZE = ckpt_board
+                SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE
+                DIRICHLET_ALPHA = get_dirichlet_alpha(BOARD_SIZE)
+                net = PolicyValueNet(board_size=BOARD_SIZE).to(device)
+                net.load_state_dict(state_dict)
+            else:
+                print(f"Existing checkpoint '{load_path}' is for {ckpt_board}x{ckpt_board}, but --board-size is {BOARD_SIZE}x{BOARD_SIZE}. Starting fresh {BOARD_SIZE}x{BOARD_SIZE} model.")
+                start_iter = 0
+        else:
+            print(f"Loading existing model parameters from {load_path}...")
+            logging.info(f"Loading existing model parameters from {load_path}")
+            net.load_state_dict(state_dict)
+            if start_iter > 0 and not args.dry_run and not args.play:
+                print(f"Detected checkpoint history up to iteration {start_iter}. Will resume from iteration {start_iter + 1}.")
+                logging.info(f"Resuming training from iteration {start_iter + 1}.")
     else:
         start_iter = 0
-        print("No existing model found. Starting from scratch.")
-        logging.info("No existing model found. Starting a fresh model.")
+        print(f"No existing model found. Starting fresh {BOARD_SIZE}x{BOARD_SIZE} model from scratch.")
+        logging.info(f"No existing model found. Starting a fresh {BOARD_SIZE}x{BOARD_SIZE} model.")
     net.eval()
 
     # Handle Dry-Run verification mode immediately (no prompts)
     if args.dry_run:
         print("\n[Dry-Run] Running quick end-to-end verification...")
         print(f"[Dry-Run] Hardware Device: {device_name} ({device.type.upper()})")
+        print(f"[Dry-Run] Board Size: {BOARD_SIZE}x{BOARD_SIZE} (Temp cutoff: move {get_temp_threshold(BOARD_SIZE)}, Dirichlet alpha: {DIRICHLET_ALPHA})")
         t0 = time.time()
         test_data = self_play_one_game(net=net, board_size=BOARD_SIZE, n_mcts_sims=5, game_idx=1)
         print(f"[Dry-Run] 1 self-play game completed ({len(test_data)} states generated in {time.time()-t0:.2f}s).")
@@ -1106,14 +1193,29 @@ def main():
     n_sims = args.sims
     n_iters = args.iters
 
+    # Persistent SGD optimizer with momentum across iterations
+    optimizer = optim.SGD(net.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=1e-4)
+    train_state_path = os.path.join(checkpoints_dir, f"train_state_{BOARD_SIZE}x{BOARD_SIZE}.pth")
+    if start_iter > 0 and os.path.isfile(train_state_path):
+        try:
+            train_state = torch.load(train_state_path, map_location=device, weights_only=False)
+            if "optimizer" in train_state:
+                optimizer.load_state_dict(train_state["optimizer"])
+            if "replay_buffer" in train_state and isinstance(train_state["replay_buffer"], list):
+                add_to_replay_buffer(train_state["replay_buffer"])
+                print(f"Restored optimizer momentum and {len(REPLAY_BUFFER)} replay buffer states from {train_state_path}.")
+        except Exception as e:
+            logging.warning(f"Could not restore auxiliary train_state ({e}); continuing with fresh optimizer state.")
+
     # 2) Self-play / 3) Train 
     total_start_time = time.time()
     end_iter = n_iters if start_iter < n_iters else start_iter + n_iters
 
     for iteration in range(start_iter, end_iter):
         iteration_start_time = time.time()
-        print(f"==== Self-Play iteration {iteration+1}/{end_iter} ====")
-        logging.info(f"==== Self-Play iteration {iteration+1}/{end_iter} ====")
+        current_lr = get_scheduled_lr(iteration, base_lr=LEARNING_RATE)
+        print(f"==== Self-Play iteration {iteration+1}/{end_iter} (Board: {BOARD_SIZE}x{BOARD_SIZE}, LR: {current_lr}) ====")
+        logging.info(f"==== Self-Play iteration {iteration+1}/{end_iter} (Board: {BOARD_SIZE}x{BOARD_SIZE}, LR: {current_lr}) ====")
 
         # Gather data from self-play (Parallelized)
         iteration_data = []
@@ -1169,8 +1271,8 @@ def main():
 
         # Add iteration_data to global replay buffer
         add_to_replay_buffer(iteration_data)
-        print(f"Total new data this iteration: {len(iteration_data)} states.")
-        logging.info(f"Total new data in iteration {iteration+1}: {len(iteration_data)} states.")
+        print(f"Total new data this iteration: {len(iteration_data)} states (Replay buffer size: {len(REPLAY_BUFFER)}).")
+        logging.info(f"Total new data in iteration {iteration+1}: {len(iteration_data)} states (Replay buffer: {len(REPLAY_BUFFER)}).")
 
         # Sample from the replay buffer for training
         train_data = sample_from_replay_buffer(sample_size=TRAIN_SAMPLE_SIZE)
@@ -1179,7 +1281,7 @@ def main():
 
         if len(train_data) > 0:
             train_start_time = time.time()
-            train_policy_value_net(net, train_data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_EPOCHS, lr=LEARNING_RATE)
+            train_policy_value_net(net, train_data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_EPOCHS, lr=current_lr, optimizer=optimizer)
             train_end_time = time.time()
             logging.info(f"Training completed in {train_end_time - train_start_time:.2f} seconds.")
         else:
@@ -1189,6 +1291,7 @@ def main():
         torch.save(net.state_dict(), "policy_value_net.pth")
         checkpoint_path = os.path.join(checkpoints_dir, f"policy_value_net_iter_{iteration+1}.pth")
         torch.save(net.state_dict(), checkpoint_path)
+        torch.save({"optimizer": optimizer.state_dict(), "replay_buffer": REPLAY_BUFFER}, train_state_path)
         # Also copy to checkpoints_dir/policy_value_net.pth if saving to custom dir (e.g. Google Drive)
         if checkpoints_dir != "." and checkpoints_dir != "checkpoints":
             torch.save(net.state_dict(), os.path.join(checkpoints_dir, "policy_value_net.pth"))

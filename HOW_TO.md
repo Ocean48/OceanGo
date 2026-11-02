@@ -126,6 +126,7 @@ python OceanGo.py --train
 
 #### Training Options:
 - `--dry-run`: Runs a fast 10-second end-to-end sanity check (1 game, backpropagation, and save test) to verify hardware and directories before committing to a full run.
+- `--board-size <N>`: Sets the Go board dimension: `9`, `13`, or `19` (default: `9`). Automatically scales Dirichlet exploration noise and opening temperature cutoffs for the selected board size.
 - `--games <N>`: Sets the number of self-play games per iteration (default: `500`).
 - `--sims <N>`: Sets MCTS simulations per move (default: `800`).
 - `--iters <N>`: Sets number of training iterations (default: `50`).

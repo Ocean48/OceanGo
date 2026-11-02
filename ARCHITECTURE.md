@@ -163,13 +163,13 @@ The evaluation value $v$ is backpropagated up the search path back to the root.
 
 ## 5. Parallel Batched MCTS & Virtual Loss
 
-To maximize GPU hardware utilization (on Apple Silicon MPS or NVIDIA CUDA), OceanGo evaluates leaves in batches of size $B = 256$ rather than evaluating one leaf at a time.
+To maximize GPU hardware utilization (on Apple Silicon MPS or NVIDIA CUDA) without distorting single-tree PUCT search paths, OceanGo separates **intra-tree batching** (`MCTS_BATCH_SIZE = 16`) from **cross-worker GPU server batching** (`GPU_SERVER_BATCH_SIZE = 512`).
 
-To prevent multiple concurrent search paths in the same batch from selecting the exact same leaf:
+To prevent multiple concurrent search paths in the same intra-tree batch from selecting the exact same leaf:
 1. **Virtual Loss**: When a path selects a node during the batch collection phase, a virtual loss $\lambda = 1.0$ is immediately added:
    $$N_{temp} = N + \lambda, \quad W_{temp} = W - \lambda$$
    This temporarily decreases $Q(s, a)$, making the node look less attractive to concurrent search paths in the same batch and forcing them to explore alternative branches.
-2. **Batch Evaluation**: Once $B$ leaves are gathered, the batch is evaluated on the GPU in a single parallel tensor pass.
+2. **Batch Evaluation**: Once leaves are gathered across workers, the central GPU server coalesces up to $512$ states and evaluates them in a single parallel tensor pass.
 3. **Loss Removal & Backup**: Virtual loss is deducted, and the true evaluated value $v$ is backpropagated.
 
 ---
@@ -194,15 +194,18 @@ To ensure the self-play games explore diverse opening lines and novel tactical v
 $$P'(s_{root}, a) = (1 - \epsilon) P(s_{root}, a) + \epsilon \cdot \eta_a, \quad \boldsymbol{\eta} \sim \text{Dir}(\alpha)$$
 
 - $\epsilon = 0.25$ (25% noise, 75% neural network prior).
-- $\alpha = 0.15$ for 9x9 boards ($\alpha = 0.03$ for standard 19x19).
+- $\alpha$ scales inversely with board area: $\alpha = 0.15$ for 9x9, $\alpha = 0.06$ for 13x13, and $\alpha = 0.03$ for standard 19x19.
 
 ### 2. Temperature Decay ($\tau$)
 After MCTS completes $M$ simulations for a move, visit counts $N(s, a)$ form the search policy:
 
 $$\pi(a | s) = \frac{N(s, a)^{1 / \tau}}{\sum_b N(s, b)^{1 / \tau}}$$
 
-- **Early Game (Moves 1 – 30)**: $\tau = 1.0$. Moves are sampled probabilistically proportional to visit counts, ensuring varied opening exploration.
-- **Mid & Late Game (Moves 31+)**: $\tau \to 0$ ($\tau \le 0.05$). The AI plays greedily:
+- **Early Game (Opening Exploration)**: $\tau = 1.0$. Moves are sampled probabilistically proportional to visit counts for the first $T_{cutoff}$ moves, scaled to board size:
+  - **9x9**: Moves 1 – 10
+  - **13x13**: Moves 1 – 16
+  - **19x19**: Moves 1 – 30 (DeepMind AlphaGo Zero default)
+- **Mid & Late Game (Moves $> T_{cutoff}$)**: $\tau \to 0$ ($\tau \le 0.05$). The AI plays greedily:
   $$a = \arg\max_a N(s, a)$$
   Maximizing tactical precision and competitive execution.
 
