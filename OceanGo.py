@@ -83,7 +83,13 @@ LEARNING_RATE = 0.01
 
 # Multi-core allocation (safe across low or high CPU core counts)
 sys_cores = os.cpu_count() or 1
-suggested_cores = max(1, sys_cores - 2) if sys_cores > 2 else sys_cores
+is_colab = ("COLAB_RELEASE_TAG" in os.environ or "COLAB_GPU" in os.environ or os.path.exists("/content"))
+if is_colab:
+    # On headless Google Colab VMs, use all vCPUs (minimum 4 workers to overlap CPU MCTS with GPU inference)
+    suggested_cores = max(4, sys_cores)
+else:
+    # On local macOS (M-series) or Windows (RTX GPU), reserve 2 cores so the desktop OS stays responsive
+    suggested_cores = max(1, sys_cores - 2) if sys_cores > 2 else sys_cores
 PARALLEL_THREADS = min(14, suggested_cores)
 
 def init_environment():
@@ -199,6 +205,8 @@ class GoGame:
         self.passes_in_a_row = 0
         self.history_states = [np.zeros((board_size, board_size), dtype=np.int32) for _ in range(8)]
         self.history_states[0] = self.board.copy()
+        self._legal_moves_cache = None
+        self._is_game_over_cache = None
 
     def copy(self):
         g = GoGame(self.board_size)
@@ -207,6 +215,8 @@ class GoGame:
         g.history = self.history.copy()
         g.passes_in_a_row = self.passes_in_a_row
         g.history_states = [b.copy() for b in self.history_states]
+        g._legal_moves_cache = None
+        g._is_game_over_cache = None
         return g
 
     def get_state_np(self):
@@ -258,8 +268,8 @@ class GoGame:
             
         return True
 
-    def make_move(self, x, y):
-        if not self.is_valid_move(x, y):
+    def make_move(self, x, y, check_valid=True):
+        if check_valid and not self.is_valid_move(x, y):
             return False
             
         if x == -1 and y == -1:
@@ -280,6 +290,8 @@ class GoGame:
         self.history.add(self.board.tobytes())
         self.history_states.insert(0, self.board.copy())
         self.history_states.pop()
+        self._legal_moves_cache = None
+        self._is_game_over_cache = None
         return True
 
     def _has_liberty(self, start, board_state):
@@ -317,15 +329,32 @@ class GoGame:
                             q.append((nx, ny))
 
     def get_legal_moves(self):
+        if self._legal_moves_cache is not None:
+            return self._legal_moves_cache
         moves = [(-1, -1)]  # Pass is always a legal move
         for x in range(self.board_size):
             for y in range(self.board_size):
                 if self.board[x, y] == 0 and self._try_move(x, y):
                     moves.append((x, y))
+        self._legal_moves_cache = moves
         return moves
 
     def is_game_over(self):
-        return self.passes_in_a_row >= 2 or len(self.get_legal_moves()) <= 1
+        if self.passes_in_a_row >= 2:
+            return True
+        if self._is_game_over_cache is not None:
+            return self._is_game_over_cache
+        if self._legal_moves_cache is not None:
+            self._is_game_over_cache = len(self._legal_moves_cache) <= 1
+            return self._is_game_over_cache
+        # Early-exit scan: stop as soon as any single legal board placement is found
+        for x in range(self.board_size):
+            for y in range(self.board_size):
+                if self.board[x, y] == 0 and self._try_move(x, y):
+                    self._is_game_over_cache = False
+                    return False
+        self._is_game_over_cache = True
+        return True
 
     def get_winner(self):
         # Chinese area scoring with Komi
@@ -433,7 +462,7 @@ def print_train_progress(epoch, total_epochs, batch, total_batches, loss, p_loss
 #    MCTS Node & AlphaZero PUCT MCTS
 # ====================================================
 class NN_MCTS_Node:
-    def __init__(self, game_state: GoGame, parent=None, move=None, prior=0.0):
+    def __init__(self, game_state: GoGame = None, parent=None, move=None, prior=0.0):
         self.game_state = game_state
         self.parent = parent
         self.move = move
@@ -448,15 +477,23 @@ class NN_MCTS_Node:
         self.P = float(prior)    # Policy prior probability from neural network
         self.value = 0.0         # Position value evaluation
 
+    def ensure_game_state(self):
+        """Lazily materializes the GoGame board state only when the node is actually visited."""
+        if self.game_state is None and self.parent is not None:
+            ng = self.parent.ensure_game_state().copy()
+            ng.make_move(*self.move, check_valid=False)
+            self.game_state = ng
+        return self.game_state
+
 def mcts_select(root: "NN_MCTS_Node"):
     """
     Selects a leaf node to evaluate. Traverses expanded internal nodes
     using the PUCT formula: Q(s, a) + U(s, a) until reaching an unexpanded
-    node or a terminal game state.
+    node or a terminal game state (where node.children is empty).
     """
     node = root
     search_path = [node]
-    while node.is_expanded and node.children and not node.game_state.is_game_over():
+    while node.is_expanded and node.children:
         best_score = -float('inf')
         best_child = None
         
@@ -477,6 +514,7 @@ def mcts_select(root: "NN_MCTS_Node"):
         node = best_child
         search_path.append(node)
 
+    node.ensure_game_state()
     return node, search_path
 
 def nn_batch_evaluate_and_expand(nodes, net=None, worker_id=None, req_queue=None, res_queue=None):
@@ -488,6 +526,7 @@ def nn_batch_evaluate_and_expand(nodes, net=None, worker_id=None, req_queue=None
     for nd in nodes:
         if nd.is_expanded:
             continue
+        nd.ensure_game_state()
         if nd.game_state.is_game_over():
             w = nd.game_state.get_winner()
             if w == 0:
@@ -507,10 +546,10 @@ def nn_batch_evaluate_and_expand(nodes, net=None, worker_id=None, req_queue=None
 
     if net is not None:
         input_tensor = boards_to_tensor(batch)
-        with torch.no_grad():
+        with torch.no_grad(), torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=(device.type == "cuda")):
             policy_logits, value_out = net(input_tensor)
-        policy_logits = policy_logits.cpu().numpy()
-        value_out = value_out.squeeze(1).cpu().numpy()
+        policy_logits = policy_logits.float().cpu().numpy()
+        value_out = value_out.float().squeeze(1).cpu().numpy()
     else:
         req_queue.put((worker_id, batch))
         policy_logits, value_out = res_queue.get()
@@ -528,9 +567,7 @@ def nn_batch_evaluate_and_expand(nodes, net=None, worker_id=None, req_queue=None
             probs = []
 
         for mv, p in zip(legal_moves, probs):
-            ng = nd.game_state.copy()
-            ng.make_move(*mv)
-            nd.children[mv] = NN_MCTS_Node(ng, parent=nd, move=mv, prior=p)
+            nd.children[mv] = NN_MCTS_Node(game_state=None, parent=nd, move=mv, prior=p)
         nd.is_expanded = True
 
 def apply_virtual_loss(search_path, loss=1.0):
@@ -637,10 +674,10 @@ def gpu_server_thread(net, req_queue, res_queues, total_workers):
                 all_inputs.extend(inputs)
                 
             input_tensor = boards_to_tensor(all_inputs)
-            with torch.no_grad():
+            with torch.no_grad(), torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=(device.type == "cuda")):
                 policy_logits, value_out = net(input_tensor)
-            policy_logits = policy_logits.cpu().numpy()
-            value_out = value_out.squeeze(1).cpu().numpy()
+            policy_logits = policy_logits.float().cpu().numpy()
+            value_out = value_out.float().squeeze(1).cpu().numpy()
             
             offset = 0
             for w_id, inputs in requests:
@@ -778,6 +815,8 @@ def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_
       - value loss (MSE vs. z)
     """
     optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=1e-4)
+    use_amp = (device.type == "cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     net.train()
 
     X_inputs = []
@@ -811,17 +850,19 @@ def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_
             tgt_v = torch.from_numpy(value_targets[excerpt]).to(device)
 
             optimizer.zero_grad()
-            out_p, out_v = net(inp)
-            out_p = out_p[:, :board_size*board_size + 1]
+            with torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
+                out_p, out_v = net(inp)
+                out_p = out_p[:, :board_size*board_size + 1]
 
-            logp = F.log_softmax(out_p, dim=1)
-            policy_loss = -torch.sum(tgt_p * logp, dim=1).mean()
+                logp = F.log_softmax(out_p, dim=1)
+                policy_loss = -torch.sum(tgt_p * logp, dim=1).mean()
 
-            value_loss = F.mse_loss(out_v, tgt_v)
-            loss = policy_loss + value_loss
+                value_loss = F.mse_loss(out_v, tgt_v)
+                loss = policy_loss + value_loss
 
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             batch_losses.append(loss.item())
 
             # Print live progress bar in the terminal
