@@ -436,7 +436,7 @@ def print_progress_bar(completed, total, start_time, prefix="Self-Play", bar_len
     elapsed_str = time.strftime("%H:%M:%S", time.gmtime(int(elapsed)))
     eta_str = time.strftime("%H:%M:%S", time.gmtime(eta_sec))
     
-    output = f"\r  {prefix}: [{bar}] {completed}/{total} ({pct*100:5.1f}%) | {speed:4.1f} games/s | Elapsed: {elapsed_str} | ETA: {eta_str}"
+    output = f"\r  {prefix}: [{bar}] {completed}/{total} ({pct*100:5.1f}%) | {speed:.4f} games/s | Elapsed: {elapsed_str} | ETA: {eta_str}"
     sys.stdout.write(output)
     sys.stdout.flush()
     if completed >= total:
