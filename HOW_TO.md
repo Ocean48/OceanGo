@@ -99,20 +99,36 @@ python OceanGo.py
 will present an interactive prompt:
 ```
 Select OceanGo Mode:
-  [1] Play Go interactively (Pygame Window) [Default]
-  [2] Start AlphaZero AI Self-Play Training
+  [1] Play Go as Black (You move first vs AI White) [Default]
+  [2] Play Go as White (AI moves first as Black)
+  [3] Start AlphaZero AI Self-Play Training
 ```
-Pressing **Enter** (or `1`) immediately boots up the graphical Pygame window.
+Pressing **Enter** (or `1`) boots up the window with you playing Black. Entering `2` boots up the window with you playing White (AI moves first).
 
 ### B. Playing Interactively Against the AI
 To jump straight into the Pygame window without prompting:
 ```bash
+# Play as Black (You move first, AI is White) [Default]
 python OceanGo.py --play
+
+# Play as White (AI moves first as Black)
+python OceanGo.py --play --color white
 ```
 *(Note: `python GPU.py --play` also works as a backwards-compatible shortcut).*
-- **Controls**:
-  - Left click on board intersections to place stones.
-  - Press **`P`** on your keyboard to pass your turn.
+- **Controls & UI**:
+  - **Left Click**: Place a stone on any legal intersection.
+  - **Pass Button / `P` key**: Pass your turn. When both players pass consecutively, the game ends automatically.
+  - **End & Score Button / `E` key**: Immediately ends the game and computes the Chinese area score with 7.5 Komi.
+  - **Resign Button**: Concede the match.
+  - **Game Over & Board Review**:
+    - Automatically displays the winner and detailed Chinese area score breakdown (stones + territory + Komi).
+    - **Scoring Squares**: Every single point contributing to a player's score is visually marked with a square:
+      - **Black Squares**: Living Black stones, Black empty territory, and captured/dead White stones in Black territory.
+      - **White Squares**: Living White stones, White empty territory, and captured/dead Black stones in White territory.
+    - **Dead Stone Detection & Toggle**: Obvious dead groups are detected automatically at game end. While reviewing the board, you can also **click on any stone group** to toggle it between Dead and Alive; the scoring squares and final scores update instantly!
+    - **Review Board**: Click **Review Board**, the **`[X]`** close button, press **`ESC`** / **`SPACE`**, or click outside the dialog to dismiss the pop-up and inspect the full board and territories.
+    - **Swap Side (`S`)**: Click **Swap Side** or press **`S`** to immediately restart a game playing as the other color!
+    - **Play Again (`R`) / Exit (`Q`)**: Start a new game with the same color, or quit cleanly.
 - To play against a specific historical snapshot:
   ```bash
   python OceanGo.py --model checkpoints/policy_value_net_iter_3.pth --play

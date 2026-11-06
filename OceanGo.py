@@ -399,17 +399,88 @@ class GoGame:
     def is_game_over(self):
         return self.passes_in_a_row >= 2
 
-    def get_winner(self):
-        # Chinese area scoring with Komi
-        b_stones = np.count_nonzero(self.board == 1)
-        w_stones = np.count_nonzero(self.board == 2)
-        b_terr = 0
-        w_terr = 0
+    def get_group(self, r, c):
+        """Returns (color, set_of_coordinates) for the connected stone group at (r, c)."""
+        if self.board[r, c] == 0:
+            return 0, set()
+        color = int(self.board[r, c])
+        q = deque([(r, c)])
+        group = {(r, c)}
+        while q:
+            cr, cc = q.pop()
+            for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nr, nc = cr + dr, cc + dc
+                if 0 <= nr < self.board_size and 0 <= nc < self.board_size:
+                    if self.board[nr, nc] == color and (nr, nc) not in group:
+                        group.add((nr, nc))
+                        q.append((nr, nc))
+        return color, group
+
+    def auto_detect_dead_stones(self):
+        """Automatically identifies small or completely trapped dead stone groups without 2 eyes."""
+        b_size = self.board_size
+        dead_stones = set()
+        visited = set()
+        groups = []
+
+        for r in range(b_size):
+            for c in range(b_size):
+                if self.board[r, c] != 0 and (r, c) not in visited:
+                    color, grp = self.get_group(r, c)
+                    visited.update(grp)
+                    libs = set()
+                    for gr, gc in grp:
+                        for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                            nr, nc = gr + dr, gc + dc
+                            if 0 <= nr < b_size and 0 <= nc < b_size and self.board[nr, nc] == 0:
+                                libs.add((nr, nc))
+                    groups.append({"color": color, "stones": grp, "liberties": libs})
+
+        for g in groups:
+            color = g["color"]
+            opp = 3 - color
+            libs = g["liberties"]
+            if len(libs) == 0:
+                dead_stones.update(g["stones"])
+            elif len(libs) <= 2 and len(g["stones"]) <= 4:
+                # Check if all liberties are directly bounded by opponent stones
+                all_surrounded = True
+                for lr, lc in libs:
+                    touches_opp = any(
+                        0 <= lr + dr < b_size and 0 <= lc + dc < b_size and self.board[lr + dr, lc + dc] == opp
+                        for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                    )
+                    if not touches_opp:
+                        all_surrounded = False
+                        break
+                if all_surrounded:
+                    dead_stones.update(g["stones"])
+
+        return dead_stones
+
+    def get_score_breakdown(self, dead_stones=None):
+        # Chinese area scoring with 7.5 Komi
+        if dead_stones is None:
+            dead_set = set()
+        else:
+            dead_set = set(dead_stones)
+
+        scoring_board = self.board.copy()
+        for r, c in dead_set:
+            scoring_board[r, c] = 0
+
+        b_alive_stones = {(r, c) for r in range(self.board_size) for c in range(self.board_size)
+                          if self.board[r, c] == 1 and (r, c) not in dead_set}
+        w_alive_stones = {(r, c) for r in range(self.board_size) for c in range(self.board_size)
+                          if self.board[r, c] == 2 and (r, c) not in dead_set}
+
+        b_terr_points = set()
+        w_terr_points = set()
         visited = set()
 
         for r in range(self.board_size):
             for c in range(self.board_size):
-                if self.board[r, c] == 0 and (r, c) not in visited:
+                if scoring_board[r, c] == 0 and (r, c) not in visited:
                     q = deque([(r, c)])
                     group = set([(r, c)])
                     touches_black = False
@@ -419,30 +490,53 @@ class GoGame:
                         cx, cy = q.pop()
                         visited.add((cx, cy))
                         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                            nx, ny = cx+dx, cy+dy
+                            nx, ny = cx + dx, cy + dy
                             if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
-                                if self.board[nx, ny] == 1:
+                                val = scoring_board[nx, ny]
+                                if val == 1:
                                     touches_black = True
-                                elif self.board[nx, ny] == 2:
+                                elif val == 2:
                                     touches_white = True
-                                elif self.board[nx, ny] == 0 and (nx, ny) not in group:
+                                elif val == 0 and (nx, ny) not in group:
                                     group.add((nx, ny))
                                     q.append((nx, ny))
-                    
+
+                    visited.update(group)
                     if touches_black and not touches_white:
-                        b_terr += len(group)
+                        b_terr_points.update(group)
                     elif touches_white and not touches_black:
-                        w_terr += len(group)
+                        w_terr_points.update(group)
 
         komi = 7.5
-        b_score = b_stones + b_terr
-        w_score = w_stones + w_terr + komi
+        b_score = len(b_alive_stones) + len(b_terr_points)
+        w_score = len(w_alive_stones) + len(w_terr_points) + komi
 
         if b_score > w_score:
-            return 1
+            winner = 1
         elif w_score > b_score:
-            return 2
-        return 0
+            winner = 2
+        else:
+            winner = 0
+
+        return {
+            "b_stones": len(b_alive_stones),
+            "w_stones": len(w_alive_stones),
+            "b_alive_stones": b_alive_stones,
+            "w_alive_stones": w_alive_stones,
+            "b_terr": len(b_terr_points),
+            "w_terr": len(w_terr_points),
+            "b_terr_points": b_terr_points,
+            "w_terr_points": w_terr_points,
+            "dead_stones": dead_set,
+            "komi": komi,
+            "b_score": b_score,
+            "w_score": w_score,
+            "winner": winner,
+            "margin": abs(b_score - w_score)
+        }
+
+    def get_winner(self):
+        return self.get_score_breakdown()["winner"]
 
 # ====================================================
 #  Helper: Convert inputs to PyTorch Tensor
@@ -927,30 +1021,130 @@ def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_
 # ====================================================
 #             Putting it All Together
 # ====================================================
-def run_interactive_game(net):
+def run_interactive_game(net, human_color="black"):
     board_size = net.board_size
-    screen_size = (board_size + 1) * GRID_SIZE
+    board_pixel_w = (board_size + 1) * GRID_SIZE
+    board_pixel_h = (board_size + 1) * GRID_SIZE
+    panel_height = 140
+
+    window_width = max(board_pixel_w, 480)
+    window_height = board_pixel_h + panel_height
+    offset_x = (window_width - board_pixel_w) // 2
+    offset_y = 0
 
     pygame.init()
-    screen = pygame.display.set_mode((screen_size, screen_size))
+    pygame.font.init()
+    screen = pygame.display.set_mode((window_width, window_height))
     pygame.display.set_caption(f"OceanGo ({board_size}x{board_size} NN MCTS)")
+
+    font_title = pygame.font.Font(None, 26)
+    font_body = pygame.font.Font(None, 21)
+    font_small = pygame.font.Font(None, 18)
+    font_btn = pygame.font.Font(None, 18)
+
+    human_player = 2 if str(human_color).lower() in ("white", "w", "2") else 1
+    ai_player = 3 - human_player
+    h_col_str = "Black" if human_player == 1 else "White"
+    ai_col_str = "White" if human_player == 1 else "Black"
 
     game = GoGame(board_size)
     clock = pygame.time.Clock()
     last_move = None
+    game_over = False
+    show_modal = False
+    resigned_by = None
+    score_info = None
+    current_dead_stones = set()
+    msg_str = "Click an intersection to play. P = Pass" if human_player == 1 else f"AI moves first as {ai_col_str}. Thinking..."
 
-    def draw_board(screen, g: GoGame, last_mv):
-        # Wood board color
-        screen.fill((220, 179, 92))
+    # Button geometry in control panel
+    btn_y = board_pixel_h + 82
+    btn_h = 42
+    margin = 16
+    spacing = 10
+    avail_w = window_width - 2 * margin - 2 * spacing
+    btn_w = avail_w // 3
+
+    btn_pass_rect = pygame.Rect(margin, btn_y, btn_w, btn_h)
+    btn_end_rect = pygame.Rect(margin + btn_w + spacing, btn_y, btn_w, btn_h)
+    btn_resign_rect = pygame.Rect(margin + (btn_w + spacing) * 2, btn_y, btn_w, btn_h)
+
+    # Modal geometry
+    modal_w = min(460, window_width - 24)
+    modal_h = 265
+    modal_x = (window_width - modal_w) // 2
+    modal_y = max(14, (board_pixel_h - modal_h) // 2)
+    modal_rect = pygame.Rect(modal_x, modal_y, modal_w, modal_h)
+    modal_close_rect = pygame.Rect(modal_rect.right - 32, modal_rect.y + 10, 22, 22)
+
+    m_btn_spacing = 6
+    m_avail_w = modal_w - 24 - 3 * m_btn_spacing
+    m_btn_w = m_avail_w // 4
+    m_btn_h = 36
+    m_btn_y = modal_rect.bottom - 48
+
+    modal_review_rect = pygame.Rect(modal_rect.x + 12, m_btn_y, m_btn_w, m_btn_h)
+    modal_play_again_rect = pygame.Rect(modal_rect.x + 12 + m_btn_w + m_btn_spacing, m_btn_y, m_btn_w, m_btn_h)
+    modal_swap_rect = pygame.Rect(modal_rect.x + 12 + (m_btn_w + m_btn_spacing) * 2, m_btn_y, m_btn_w, m_btn_h)
+    modal_exit_rect = pygame.Rect(modal_rect.x + 12 + (m_btn_w + m_btn_spacing) * 3, m_btn_y, m_btn_w, m_btn_h)
+
+    def reset_game(swap_sides=False):
+        nonlocal game, last_move, game_over, show_modal, resigned_by, score_info, current_dead_stones, human_player, ai_player, msg_str, h_col_str, ai_col_str
+        if swap_sides:
+            human_player = 3 - human_player
+            ai_player = 3 - human_player
+            h_col_str = "Black" if human_player == 1 else "White"
+            ai_col_str = "White" if human_player == 1 else "Black"
+        game = GoGame(board_size)
+        last_move = None
+        game_over = False
+        show_modal = False
+        resigned_by = None
+        score_info = None
+        current_dead_stones = set()
+        if human_player == 1:
+            msg_str = f"New game! You play {h_col_str} (first move). P = Pass"
+        else:
+            msg_str = f"New game! You play {h_col_str}. AI plays {ai_col_str} (thinking)..."
+
+    def trigger_game_over(resigned=None):
+        nonlocal game_over, show_modal, resigned_by, score_info, current_dead_stones, msg_str
+        game_over = True
+        show_modal = True
+        resigned_by = resigned
+        if not resigned:
+            current_dead_stones = game.auto_detect_dead_stones()
+            score_info = game.get_score_breakdown(dead_stones=current_dead_stones)
+
+    def draw_button(surf, rect, text, font, base_color, hover_color, text_color=(255, 255, 255)):
+        mouse_pos = pygame.mouse.get_pos()
+        is_hovered = rect.collidepoint(mouse_pos)
+        color = hover_color if is_hovered else base_color
+        pygame.draw.rect(surf, color, rect, border_radius=7)
+        pygame.draw.rect(surf, (255, 255, 255, 50), rect, width=1, border_radius=7)
+        txt_surf = font.render(text, True, text_color)
+        surf.blit(txt_surf, txt_surf.get_rect(center=rect.center))
+
+    def render_frame():
+        # Background
+        screen.fill((15, 23, 42))
+
+        # 1. Wood Go Board
+        pygame.draw.rect(screen, (220, 179, 92), (offset_x, offset_y, board_pixel_w, board_pixel_h))
+        pygame.draw.rect(screen, (160, 120, 50), (offset_x, offset_y, board_pixel_w, board_pixel_h), 2)
+
+        # Grid lines
         for i in range(1, board_size + 1):
-            pygame.draw.line(screen, (0,0,0),
-                             (i*GRID_SIZE, GRID_SIZE),
-                             (i*GRID_SIZE, screen_size - GRID_SIZE), 2)
-            pygame.draw.line(screen, (0,0,0),
-                             (GRID_SIZE, i*GRID_SIZE),
-                             (screen_size - GRID_SIZE, i*GRID_SIZE), 2)
-                             
-        # Draw star points (Hoshi) for 9x9, 13x13, and 19x19 boards
+            gx = offset_x + i * GRID_SIZE
+            gy = offset_y + i * GRID_SIZE
+            pygame.draw.line(screen, (0, 0, 0),
+                             (gx, offset_y + GRID_SIZE),
+                             (gx, offset_y + board_pixel_h - GRID_SIZE), 2)
+            pygame.draw.line(screen, (0, 0, 0),
+                             (offset_x + GRID_SIZE, gy),
+                             (offset_x + board_pixel_w - GRID_SIZE, gy), 2)
+
+        # Star points (Hoshi)
         if board_size == 19:
             star_points = [(3, 3), (3, 9), (3, 15),
                            (9, 3), (9, 9), (9, 15),
@@ -962,109 +1156,392 @@ def run_interactive_game(net):
         else:
             star_points = []
         for sx, sy in star_points:
-            px = (sy + 1) * GRID_SIZE
-            py = (sx + 1) * GRID_SIZE
-            pygame.draw.circle(screen, (0,0,0), (px, py), 4)
+            px = offset_x + (sy + 1) * GRID_SIZE
+            py = offset_y + (sx + 1) * GRID_SIZE
+            pygame.draw.circle(screen, (0, 0, 0), (px, py), 4)
 
+        # 2. Stones (alive rendered solid, dead rendered dimmed/translucent)
         for x in range(board_size):
             for y in range(board_size):
-                cell = g.board[x,y]
-                cx = (y+1)*GRID_SIZE
-                cy = (x+1)*GRID_SIZE
-                if cell == 1:
-                    pygame.draw.circle(screen, (0,0,0), (cx,cy), GRID_SIZE//2 - 5)
-                elif cell == 2:
-                    pygame.draw.circle(screen, (255,255,255), (cx,cy), GRID_SIZE//2 - 5)
-                    pygame.draw.circle(screen, (0,0,0), (cx,cy), GRID_SIZE//2 - 5, 1) # Outline for white
-                    
-        # Highlight last move
-        if last_mv and last_mv != (-1, -1):
-            lx, ly = last_mv
-            cx = (ly+1)*GRID_SIZE
-            cy = (lx+1)*GRID_SIZE
-            pygame.draw.circle(screen, (255, 0, 0), (cx,cy), 4)
-            
+                cell = game.board[x, y]
+                if cell == 0:
+                    continue
+                cx = offset_x + (y + 1) * GRID_SIZE
+                cy = offset_y + (x + 1) * GRID_SIZE
+                radius = GRID_SIZE // 2 - 4
+
+                is_dead = game_over and score_info and ((x, y) in score_info["dead_stones"])
+
+                if is_dead:
+                    # Draw dead stone with transparency
+                    dim_surf = pygame.Surface((radius * 2 + 4, radius * 2 + 4), pygame.SRCALPHA)
+                    center = (radius + 2, radius + 2)
+                    if cell == 1:
+                        # Dead black stone
+                        pygame.draw.circle(dim_surf, (15, 15, 15, 90), center, radius)
+                    else:
+                        # Dead white stone
+                        pygame.draw.circle(dim_surf, (250, 250, 250, 90), center, radius)
+                        pygame.draw.circle(dim_surf, (20, 20, 20, 90), center, radius, 1)
+                    screen.blit(dim_surf, (cx - radius - 2, cy - radius - 2))
+                else:
+                    # Normal alive stone
+                    if cell == 1:
+                        pygame.draw.circle(screen, (15, 15, 15), (cx, cy), radius)
+                    elif cell == 2:
+                        pygame.draw.circle(screen, (250, 250, 250), (cx, cy), radius)
+                        pygame.draw.circle(screen, (20, 20, 20), (cx, cy), radius, 1)
+
+        # 3. End-Game Scoring Squares (Added to ALL Black & White score points, including dead stones)
+        if game_over and score_info:
+            sq_size = 10
+            half_sq = sq_size // 2
+
+            # --- ALL BLACK SCORE POINTS (Black Squares) ---
+            # Living Black stones: Black square with white border
+            for r, c in score_info["b_alive_stones"]:
+                cx = offset_x + (c + 1) * GRID_SIZE
+                cy = offset_y + (r + 1) * GRID_SIZE
+                sq_rect = pygame.Rect(cx - half_sq, cy - half_sq, sq_size, sq_size)
+                pygame.draw.rect(screen, (15, 15, 15), sq_rect)
+                pygame.draw.rect(screen, (240, 240, 240), sq_rect, 1)
+
+            # Black territory points (empty territory + dead white stones)
+            for r, c in score_info["b_terr_points"]:
+                cx = offset_x + (c + 1) * GRID_SIZE
+                cy = offset_y + (r + 1) * GRID_SIZE
+                sq_rect = pygame.Rect(cx - half_sq, cy - half_sq, sq_size, sq_size)
+                pygame.draw.rect(screen, (15, 15, 15), sq_rect)
+                if (r, c) in score_info["dead_stones"]:
+                    # Dead white stone inside black territory: outline for contrast
+                    pygame.draw.rect(screen, (240, 240, 240), sq_rect, 1)
+
+            # --- ALL WHITE SCORE POINTS (White Squares) ---
+            # Living White stones: White square with dark border
+            for r, c in score_info["w_alive_stones"]:
+                cx = offset_x + (c + 1) * GRID_SIZE
+                cy = offset_y + (r + 1) * GRID_SIZE
+                sq_rect = pygame.Rect(cx - half_sq, cy - half_sq, sq_size, sq_size)
+                pygame.draw.rect(screen, (250, 250, 250), sq_rect)
+                pygame.draw.rect(screen, (15, 15, 15), sq_rect, 1)
+
+            # White territory points (empty territory + dead black stones)
+            for r, c in score_info["w_terr_points"]:
+                cx = offset_x + (c + 1) * GRID_SIZE
+                cy = offset_y + (r + 1) * GRID_SIZE
+                sq_rect = pygame.Rect(cx - half_sq, cy - half_sq, sq_size, sq_size)
+                pygame.draw.rect(screen, (250, 250, 250), sq_rect)
+                pygame.draw.rect(screen, (15, 15, 15), sq_rect, 1)
+
+        # Last move highlight (only while game is in progress)
+        if not game_over and last_move and last_move != (-1, -1):
+            lx, ly = last_move
+            cx = offset_x + (ly + 1) * GRID_SIZE
+            cy = offset_y + (lx + 1) * GRID_SIZE
+            pygame.draw.circle(screen, (239, 68, 68), (cx, cy), 4)
+
+        # 4. Control Panel
+        panel_rect = pygame.Rect(0, board_pixel_h, window_width, panel_height)
+        pygame.draw.rect(screen, (24, 32, 47), panel_rect)
+        pygame.draw.line(screen, (51, 65, 85), (0, board_pixel_h), (window_width, board_pixel_h), 2)
+
+        # Turn indicator
+        ind_cx = 24
+        ind_cy = board_pixel_h + 24
+        if game_over:
+            pygame.draw.circle(screen, (245, 158, 11), (ind_cx, ind_cy), 8)
+            if resigned_by == human_player:
+                t_str = f"Game Over (AI Won [{ai_col_str}] - You Resigned)"
+            elif resigned_by == ai_player:
+                t_str = f"Game Over (You Won [{h_col_str}] - AI Resigned)"
+            elif score_info:
+                w = score_info["winner"]
+                m = score_info["margin"]
+                if w == human_player:
+                    t_str = f"Game Over (You Won [{h_col_str}] +{m:.1f} pts)"
+                elif w == ai_player:
+                    t_str = f"Game Over (AI Won [{ai_col_str}] +{m:.1f} pts)"
+                else:
+                    t_str = "Game Over (Tie)"
+            else:
+                t_str = "Game Over"
+            turn_txt = font_body.render(t_str, True, (245, 158, 11))
+        elif game.current_player == human_player:
+            if human_player == 1:
+                pygame.draw.circle(screen, (15, 15, 15), (ind_cx, ind_cy), 8)
+                pygame.draw.circle(screen, (240, 240, 240), (ind_cx, ind_cy), 8, 1)
+            else:
+                pygame.draw.circle(screen, (250, 250, 250), (ind_cx, ind_cy), 8)
+                pygame.draw.circle(screen, (15, 15, 15), (ind_cx, ind_cy), 8, 1)
+            turn_txt = font_body.render(f"Your Turn ({h_col_str})", True, (255, 255, 255))
+        else:
+            if ai_player == 1:
+                pygame.draw.circle(screen, (15, 15, 15), (ind_cx, ind_cy), 8)
+                pygame.draw.circle(screen, (240, 240, 240), (ind_cx, ind_cy), 8, 1)
+            else:
+                pygame.draw.circle(screen, (250, 250, 250), (ind_cx, ind_cy), 8)
+                pygame.draw.circle(screen, (15, 15, 15), (ind_cx, ind_cy), 8, 1)
+            turn_txt = font_body.render(f"AI Thinking... ({ai_col_str})", True, (255, 255, 255))
+        screen.blit(turn_txt, (ind_cx + 14, ind_cy - turn_txt.get_height() // 2))
+
+        # Score / Stone counts on top-right of panel
+        if game_over and score_info and not resigned_by:
+            counts_txt = font_small.render(f"Score: B {score_info['b_score']:.1f} | W {score_info['w_score']:.1f} (incl. 7.5 Komi)", True, (251, 191, 36))
+        else:
+            b_count = int(np.count_nonzero(game.board == 1))
+            w_count = int(np.count_nonzero(game.board == 2))
+            counts_txt = font_small.render(f"Stones: B {b_count} | W {w_count} (+7.5 Komi)", True, (148, 163, 184))
+        screen.blit(counts_txt, (window_width - counts_txt.get_width() - 16, ind_cy - counts_txt.get_height() // 2))
+
+        # Status / Alert message banner
+        is_alert = any(k in msg_str.lower() for k in ("passed", "game over", "resign", "alert", "caution", "dead"))
+        msg_color = (251, 191, 36) if is_alert else (203, 213, 225)
+        msg_surf = font_small.render(msg_str, True, msg_color)
+        screen.blit(msg_surf, (16, board_pixel_h + 48))
+
+        # Control Buttons in bottom panel
+        if game_over and not show_modal:
+            # Buttons when user is reviewing the board with popup closed
+            draw_button(screen, btn_pass_rect, "Show Score", font_btn, (37, 99, 235), (59, 130, 246))
+            draw_button(screen, btn_end_rect, "Play Again (R)", font_btn, (16, 185, 129), (52, 211, 153))
+            draw_button(screen, btn_resign_rect, "Swap Side (S)", font_btn, (139, 92, 246), (124, 58, 237))
+        else:
+            draw_button(screen, btn_pass_rect, "Pass (P)", font_btn, (37, 99, 235), (59, 130, 246))
+            draw_button(screen, btn_end_rect, "Count / End", font_btn, (16, 185, 129), (52, 211, 153))
+            draw_button(screen, btn_resign_rect, "Resign", font_btn, (220, 38, 38), (239, 68, 68))
+
+        # 5. Game Over Modal Overlay
+        if game_over and show_modal:
+            dim_surf = pygame.Surface((window_width, board_pixel_h), pygame.SRCALPHA)
+            dim_surf.fill((0, 0, 0, 160))
+            screen.blit(dim_surf, (0, 0))
+
+            # Modal Box
+            pygame.draw.rect(screen, (24, 32, 47), modal_rect, border_radius=12)
+            pygame.draw.rect(screen, (71, 85, 105), modal_rect, width=2, border_radius=12)
+
+            # Close [X] Button in top-right of modal
+            mouse_pos = pygame.mouse.get_pos()
+            is_close_hov = modal_close_rect.collidepoint(mouse_pos)
+            close_col = (220, 38, 38) if is_close_hov else (51, 65, 85)
+            pygame.draw.rect(screen, close_col, modal_close_rect, border_radius=4)
+            x_txt = font_small.render("X", True, (255, 255, 255))
+            screen.blit(x_txt, x_txt.get_rect(center=modal_close_rect.center))
+
+            title_surf = font_title.render("GAME OVER", True, (251, 191, 36))
+            screen.blit(title_surf, (modal_rect.centerx - title_surf.get_width() // 2, modal_rect.y + 16))
+
+            # Winner headline
+            if resigned_by == human_player:
+                res_surf = font_body.render(f"AI Wins ({ai_col_str} - You Resigned)", True, (239, 68, 68))
+            elif resigned_by == ai_player:
+                res_surf = font_body.render(f"You Win ({h_col_str} - AI Resigned)", True, (34, 197, 94))
+            elif score_info:
+                w = score_info["winner"]
+                m = score_info["margin"]
+                if w == human_player:
+                    res_surf = font_body.render(f"🎉 You Won ({h_col_str})! (+{m:.1f} pts)", True, (34, 197, 94))
+                elif w == ai_player:
+                    res_surf = font_body.render(f"🤖 AI Won ({ai_col_str})! (+{m:.1f} pts)", True, (96, 165, 250))
+                else:
+                    res_surf = font_body.render("🤝 Game Tied!", True, (255, 255, 255))
+            else:
+                res_surf = font_body.render("Game Over", True, (255, 255, 255))
+            screen.blit(res_surf, (modal_rect.centerx - res_surf.get_width() // 2, modal_rect.y + 48))
+
+            # Score breakdown details
+            if score_info and not resigned_by:
+                b_owner = "You" if human_player == 1 else "AI"
+                w_owner = "You" if human_player == 2 else "AI"
+                b_str = f"Black ({b_owner}): {score_info['b_stones']} stones + {score_info['b_terr']} terr = {score_info['b_score']:.1f} pts"
+                w_str = f"White ({w_owner}): {score_info['w_stones']} stones + {score_info['w_terr']} terr + {score_info['komi']:.1f} komi = {score_info['w_score']:.1f} pts"
+                b_surf = font_small.render(b_str, True, (226, 232, 240))
+                w_surf = font_small.render(w_str, True, (226, 232, 240))
+                screen.blit(b_surf, (modal_rect.centerx - b_surf.get_width() // 2, modal_rect.y + 82))
+                screen.blit(w_surf, (modal_rect.centerx - w_surf.get_width() // 2, modal_rect.y + 104))
+                
+                terr_hint = font_small.render("Squares: Black = Black Score | White = White Score (incl. dead stones)", True, (148, 163, 184))
+                screen.blit(terr_hint, (modal_rect.centerx - terr_hint.get_width() // 2, modal_rect.y + 132))
+
+                terr_hint2 = font_small.render("(Click 'Review' or [X] to inspect; click any stone to toggle Alive/Dead)", True, (148, 163, 184))
+                screen.blit(terr_hint2, (modal_rect.centerx - terr_hint2.get_width() // 2, modal_rect.y + 152))
+
+            # Modal action buttons (4 buttons: Review, Play Again, Swap Side, Exit)
+            draw_button(screen, modal_review_rect, "Review", font_btn, (37, 99, 235), (59, 130, 246))
+            draw_button(screen, modal_play_again_rect, "Play Again (R)", font_btn, (16, 185, 129), (52, 211, 153))
+            draw_button(screen, modal_swap_rect, "Swap Side (S)", font_btn, (139, 92, 246), (124, 58, 237))
+            draw_button(screen, modal_exit_rect, "Exit (Q)", font_btn, (71, 85, 105), (100, 116, 139))
+
         pygame.display.flip()
 
     while True:
-        if game.is_game_over():
-            draw_board(screen, game, last_move)
-            w = game.get_winner()
-            if w == 0:
-                print("\nGame over! It's a tie.")
-                logging.info("Interactive Game: Game over! It's a tie.")
-            elif w == 1:
-                print("\nGame over! You (Black) win!")
-                logging.info("Interactive Game: Game over! Player 1 (Human) won.")
-            else:
-                print("\nGame over! AI (White) wins!")
-                logging.info("Interactive Game: Game over! Player 2 (AI) won.")
+        clock.tick(30)
+        render_frame()
 
-            print("Press any key or close the window to exit.")
-            waiting = True
-            while waiting:
-                for event in pygame.event.get():
-                    if event.type in (pygame.QUIT, pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
-                        waiting = False
-                        break
-                clock.tick(15)
-            pygame.quit()
-            sys.exit()
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
 
-        draw_board(screen, game, last_move)
-        clock.tick(15)
+            if event.type == pygame.KEYDOWN:
+                if game_over:
+                    if event.key == pygame.K_r:
+                        reset_game(swap_sides=False)
+                    elif event.key == pygame.K_s:
+                        reset_game(swap_sides=True)
+                    elif event.key == pygame.K_q:
+                        pygame.quit()
+                        sys.exit()
+                    elif event.key == pygame.K_ESCAPE or event.key == pygame.K_SPACE or event.key == pygame.K_b:
+                        if show_modal:
+                            show_modal = False
+                            msg_str = "Reviewing board: Click stones to toggle Dead/Alive. [S] = Swap Sides."
+                        else:
+                            pygame.quit()
+                            sys.exit()
+                else:
+                    if event.key == pygame.K_ESCAPE or event.key == pygame.K_q:
+                        pygame.quit()
+                        sys.exit()
+                    elif event.key == pygame.K_p and game.current_player == human_player:
+                        # Human passed via keyboard
+                        game.make_move(-1, -1)
+                        last_move = (-1, -1)
+                        logging.info(f"Interactive Game: Human ({h_col_str}) passed.")
+                        if game.is_game_over():
+                            trigger_game_over()
+                            msg_str = "Both players passed. Game Over!"
+                        else:
+                            msg_str = "You passed. AI is thinking..."
 
-        # Player 1 = human
-        if game.current_player == 1:
-            x,y = None,None
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_p:
-                        x, y = -1, -1 # Pass
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    px, py = event.pos
-                    grid_x = round((py/GRID_SIZE) - 1)
-                    grid_y = round((px/GRID_SIZE) - 1)
-                    if 0 <= grid_x < board_size and 0 <= grid_y < board_size:
-                        x,y = grid_x, grid_y
-            if x is not None:
-                if game.is_valid_move(x,y):
-                    game.make_move(x,y)
-                    last_move = (x, y)
-                    if (x, y) == (-1, -1):
-                        print("Human passed.")
-                        logging.info("Interactive Game: Human passed.")
+                    elif (event.key == pygame.K_e or event.key == pygame.K_c) and not game_over:
+                        # End and score
+                        trigger_game_over()
+                        msg_str = "Game ended by player. Score tallied."
+
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+
+                if game_over:
+                    if show_modal:
+                        if modal_close_rect.collidepoint((mx, my)) or modal_review_rect.collidepoint((mx, my)):
+                            show_modal = False
+                            msg_str = "Reviewing board: Click stones to toggle Dead/Alive. [S] = Swap Sides."
+                        elif modal_play_again_rect.collidepoint((mx, my)):
+                            reset_game(swap_sides=False)
+                        elif modal_swap_rect.collidepoint((mx, my)):
+                            reset_game(swap_sides=True)
+                        elif modal_exit_rect.collidepoint((mx, my)):
+                            pygame.quit()
+                            sys.exit()
+                        elif not modal_rect.collidepoint((mx, my)):
+                            # Dismiss modal by clicking outside
+                            show_modal = False
+                            msg_str = "Reviewing board: Click stones to toggle Dead/Alive. [S] = Swap Sides."
                     else:
-                        print(f"Human played: ({x}, {y})")
-                        logging.info(f"Interactive Game: Human played ({x}, {y})")
-        else:
-            # Player 2 = AI
-            print("AI thinking...", end="", flush=True)
-            logging.info("Interactive Game: AI thinking...")
+                        # Modal is hidden, user is reviewing board
+                        if btn_pass_rect.collidepoint((mx, my)):
+                            show_modal = True
+                            msg_str = "Game over dialog open."
+                        elif btn_end_rect.collidepoint((mx, my)):
+                            reset_game(swap_sides=False)
+                        elif btn_resign_rect.collidepoint((mx, my)):
+                            reset_game(swap_sides=True)
+                        elif my < board_pixel_h:
+                            # Click on Go board during review: toggle stone group Dead / Alive!
+                            grid_x = round((my - offset_y) / GRID_SIZE - 1)
+                            grid_y = round((mx - offset_x) / GRID_SIZE - 1)
+                            if 0 <= grid_x < board_size and 0 <= grid_y < board_size:
+                                cx = offset_x + (grid_y + 1) * GRID_SIZE
+                                cy = offset_y + (grid_x + 1) * GRID_SIZE
+                                if (mx - cx) ** 2 + (my - cy) ** 2 <= (GRID_SIZE * 0.45) ** 2:
+                                    if game.board[grid_x, grid_y] != 0:
+                                        color, grp = game.get_group(grid_x, grid_y)
+                                        if any(pt in current_dead_stones for pt in grp):
+                                            current_dead_stones.difference_update(grp)
+                                            status = "Alive"
+                                        else:
+                                            current_dead_stones.update(grp)
+                                            status = "Dead"
+                                        score_info = game.get_score_breakdown(dead_stones=current_dead_stones)
+                                        col_name = "Black" if color == 1 else "White"
+                                        msg_str = f"Toggled {col_name} group ({len(grp)} stone{'s' if len(grp) > 1 else ''}) as {status}. Score updated!"
+                else:
+                    # In-game button clicks
+                    if btn_pass_rect.collidepoint((mx, my)):
+                        if game.current_player == human_player:
+                            game.make_move(-1, -1)
+                            last_move = (-1, -1)
+                            logging.info(f"Interactive Game: Human ({h_col_str}) passed.")
+                            if game.is_game_over():
+                                trigger_game_over()
+                                msg_str = "Both players passed. Game Over!"
+                            else:
+                                msg_str = "You passed. AI is thinking..."
+                    elif btn_end_rect.collidepoint((mx, my)):
+                        trigger_game_over()
+                        logging.info("Interactive Game: Human triggered End & Score.")
+                        msg_str = "Game ended by player. Score tallied."
+                    elif btn_resign_rect.collidepoint((mx, my)):
+                        trigger_game_over(resigned=human_player)
+                        logging.info(f"Interactive Game: Human ({h_col_str}) resigned.")
+                        msg_str = "You resigned. AI wins!"
+                    elif my < board_pixel_h:
+                        # Click on Go board
+                        if game.current_player == human_player:
+                            grid_x = round((my - offset_y) / GRID_SIZE - 1)
+                            grid_y = round((mx - offset_x) / GRID_SIZE - 1)
+                            if 0 <= grid_x < board_size and 0 <= grid_y < board_size:
+                                cx = offset_x + (grid_y + 1) * GRID_SIZE
+                                cy = offset_y + (grid_x + 1) * GRID_SIZE
+                                if (mx - cx) ** 2 + (my - cy) ** 2 <= (GRID_SIZE * 0.45) ** 2:
+                                    if game.is_valid_move(grid_x, grid_y):
+                                        game.make_move(grid_x, grid_y)
+                                        last_move = (grid_x, grid_y)
+                                        logging.info(f"Interactive Game: Human ({h_col_str}) played ({grid_x}, {grid_y})")
+                                        msg_str = f"You played ({grid_x}, {grid_y}). AI is thinking..."
+                                    else:
+                                        msg_str = f"Illegal move at ({grid_x}, {grid_y}). Try another intersection."
+
+        # AI Turn Handling
+        if not game_over and game.current_player == ai_player:
+            msg_str = f"AI is thinking ({ai_col_str})..."
+            render_frame()
+
+            logging.info(f"Interactive Game: AI thinking ({ai_col_str})...")
             root = NN_MCTS_Node(game.copy())
             nn_batch_evaluate_and_expand([root], net=net)
             root.N = 1
             root.W = -root.value
             root.Q = -root.value
             pi_dict = mcts_run(root, net, n_simulations=N_MCTS_SIMS, temp=1e-3, batch_size=MCTS_BATCH_SIZE)
+
             if len(pi_dict) == 0:
-                print(" AI has no moves, passing!")
-                logging.info("Interactive Game: AI forced pass (no moves).")
+                logging.info(f"Interactive Game: AI ({ai_col_str}) forced pass (no moves).")
                 game.make_move(-1, -1)
                 last_move = (-1, -1)
+                if game.is_game_over():
+                    trigger_game_over()
+                    msg_str = "Both players passed. Game Over!"
+                else:
+                    msg_str = "⚠️ AI passed! Click [Pass] to finish, or keep playing."
             else:
                 best_move = max(pi_dict.items(), key=lambda elem: elem[1])[0]
                 if best_move == (-1, -1):
-                    print(" AI passes!")
-                    logging.info("Interactive Game: AI voluntarily passed.")
+                    logging.info(f"Interactive Game: AI ({ai_col_str}) voluntarily passed.")
+                    game.make_move(-1, -1)
+                    last_move = (-1, -1)
+                    if game.is_game_over():
+                        trigger_game_over()
+                        msg_str = "Both players passed. Game Over!"
+                    else:
+                        msg_str = "⚠️ AI passed! Click [Pass] to finish, or keep playing."
                 else:
-                    print(f" AI plays: {best_move}")
-                    logging.info(f"Interactive Game: AI played: {best_move}")
-                game.make_move(*best_move)
-                last_move = best_move
+                    logging.info(f"Interactive Game: AI ({ai_col_str}) played: {best_move}")
+                    game.make_move(*best_move)
+                    last_move = best_move
+                    msg_str = f"AI played {best_move}. Your turn ({h_col_str})."
 
 def main():
     global BOARD_SIZE, SCREEN_SIZE, DIRICHLET_ALPHA
@@ -1073,6 +1550,7 @@ def main():
     parser.add_argument("--model", type=str, default="", help="Path to specific model to load (e.g. checkpoints/policy_value_net_iter_5.pth)")
     parser.add_argument("--play", action="store_true", help="Play interactively immediately with the Pygame window")
     parser.add_argument("--train", action="store_true", help="Start AlphaZero self-play training loop")
+    parser.add_argument("--color", type=str, default="black", choices=["black", "white"], help="Player color: 'black' (moves first, default) or 'white' (AI moves first)")
     parser.add_argument("--dry-run", action="store_true", help="Run a quick 5-second sanity test of self-play, MCTS, and neural training")
     parser.add_argument("--save-dir", type=str, default="checkpoints", help="Directory where checkpoints and models will be saved")
     parser.add_argument("--board-size", type=int, default=BOARD_SIZE, help=f"Go board dimension: 9, 13, or 19 (default: {BOARD_SIZE})")
@@ -1164,27 +1642,32 @@ def main():
     should_play = args.play
     if not args.play and not args.train:
         print("\nSelect OceanGo Mode:")
-        print("  [1] Play Go interactively (Pygame Window) [Default]")
-        print("  [2] Start AlphaZero AI Self-Play Training")
+        print("  [1] Play Go as Black (You move first vs AI White) [Default]")
+        print("  [2] Play Go as White (AI moves first as Black)")
+        print("  [3] Start AlphaZero AI Self-Play Training")
         choice = ""
         try:
             if sys.stdin.isatty():
-                choice = input("\nEnter choice (1 or 2, default is 1): ").strip()
+                choice = input("\nEnter choice (1, 2, or 3, default is 1): ").strip()
             else:
                 choice = "1"
         except (EOFError, KeyboardInterrupt):
             choice = "1"
 
-        if choice == "2":
+        if choice == "3":
             should_play = False
+        elif choice == "2":
+            should_play = True
+            args.color = "white"
         else:
             should_play = True
+            args.color = "black"
 
     # If the user wants to play against the model, boot up the UI and exit after the game.
     if should_play:
-        print("Starting interactive Pygame window...")
-        logging.info("Starting interactive Pygame window.")
-        run_interactive_game(net)
+        print(f"Starting interactive Pygame window (You play {args.color.capitalize()})...")
+        logging.info(f"Starting interactive Pygame window (You play {args.color.capitalize()}).")
+        run_interactive_game(net, human_color=args.color)
         return
 
     checkpoints_dir = args.save_dir
