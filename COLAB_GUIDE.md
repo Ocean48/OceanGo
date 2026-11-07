@@ -9,9 +9,9 @@ This guide walks you through setting up, running, and monitoring **OceanGo** Alp
 | Feature | Details |
 |:---|:---|
 | **Primary File** | [`OceanGo_Colab.ipynb`](OceanGo_Colab.ipynb) (included in the repository) |
-| **Hardware** | NVIDIA Cloud GPU with CUDA & Tensor Cores |
-| **Recommended GPU** | **T4 GPU** (~1.5 to 1.9 Compute Units / hour — cheapest tier) |
-| **Checkpoints** | Automatically sync directly to your personal **Google Drive** |
+| **Hardware** | Google Cloud **TPU `v5e-1`** (44 vCPUs) or NVIDIA **T4 GPU + High-RAM** (8 vCPUs) |
+| **Recommended Runtime** | **TPU `v5e-1`** (~2.0 Compute Units/hr, **44 vCPUs** for 42 parallel MCTS workers) |
+| **Checkpoints** | Automatically sync directly to your personal **Google Drive** (portable across TPU, Windows GPU, and Mac M5) |
 | **Background Execution** | **Yes** — you can close the browser tab or shut down your Mac |
 
 ---
@@ -30,15 +30,15 @@ This guide walks you through setting up, running, and monitoring **OceanGo** Alp
 
 ---
 
-### Step 3: Configure the GPU & High-RAM
+### Step 3: Configure the Accelerator (`TPU v5e-1` or `T4 GPU + High-RAM`)
 1. In the top menu, click **Runtime** $\to$ **Change runtime type**.
-2. Set the following options:
-   - **Hardware accelerator**: Select **T4 GPU**.
-   - **High-RAM**: Toggle **ON** *(recommended: upgrades your VM from 2 vCPUs to 8 vCPUs for ~3x faster self-play at only ~0.5 extra Compute Units/hr)*.
+2. Choose one of the two recommended hardware setups:
+   - **Option A — Fastest Self-Play (Recommended)**: Select **TPU `v5e-1`**. *(Gives you **44 vCPUs** so 42 MCTS games run simultaneously alongside `bfloat16` TPU inference at ~2.0 Compute Units/hr!)*
+   - **Option B — Best NVIDIA GPU Setup**: Select **T4 GPU** and toggle **High-RAM ON** *(upgrades your GPU VM from 2 vCPUs to 8 vCPUs at ~2.3 Compute Units/hr)*.
 3. Click **Save**.
 
 > [!TIP]
-> **Best Credit Efficiency**: **T4 GPU + High-RAM** consumes **~2.3 Compute Units per hour** (or **~1.8 CUs/hr** with High-RAM off) and finishes 50 training iterations in **~8 hours (~18 Compute Units total)**!
+> **Why `TPU v5e-1` is so fast for AlphaZero**: Self-play MCTS spends most of its time traversing game trees and checking Go board rules on CPU cores. **`TPU v5e-1` provides 44 vCPUs** (5.5x more CPU cores than `T4 + High-RAM`), and `OceanGo.py` pads neural network batches into fixed buckets (`16, 32, 64, 128, 256, 512`) so the TPU evaluates all 42 CPU workers without recompiling!
 
 ---
 
@@ -150,8 +150,9 @@ Once Colab finishes an iteration and saves `policy_value_net.pth` to your Google
 
 | Runtime Setup (`Change runtime type`) | Command Preset | Cost (CUs/hr) | Time per Loop | 50 Loops Cost & Time | Max Loops per 200 CUs |
 |:---|:---|:---:|:---:|:---:|:---:|
-| 🏆 **T4 GPU + High-RAM ON** *(Best Value — 8 vCPUs)* | `--games 200 --sims 400 --iters 50` | **~2.3 CUs/hr** | **~8–10 mins** | **~18 CUs (~8 hrs)** | **~550+ Loops** |
-| **T4 GPU (High-RAM OFF)** *(Longest Clock — 2 vCPUs)* | `--games 200 --sims 400 --iters 50` | **~1.8 CUs/hr** | ~20–25 mins | ~32 CUs (~18 hrs) | ~270 Loops |
+| 🚀 **TPU `v5e-1`** *(Fastest Self-Play — **44 vCPUs**)* | `--games 200 --sims 400 --iters 50` | **~2.0 CUs/hr** | **~3–5 mins** | **~7–8 CUs (~3.5 hrs)** | **~1,200+ Loops** |
+| 🏆 **T4 GPU + High-RAM ON** *(Best GPU Value — 8 vCPUs)* | `--games 200 --sims 400 --iters 50` | **~2.3 CUs/hr** | **~8–10 mins** | **~18 CUs (~8 hrs)** | **~550+ Loops** |
+| **TPU `v5e-1`** *(DeepMind Heavy Preset — **44 vCPUs**)* | `--games 500 --sims 800 --iters 50` | **~2.0 CUs/hr** | **~12–16 mins** | **~24 CUs (~12 hrs)** | **~400 Loops** |
 | **T4 GPU + High-RAM ON** *(DeepMind Heavy Preset)* | `--games 500 --sims 800 --iters 50` | **~2.3 CUs/hr** | ~35–45 mins | ~75 CUs (~32 hrs) | ~130 Loops |
 | **L4 GPU (High-RAM OFF)** *(8 vCPUs, 2x cost)* | `--games 200 --sims 400 --iters 50` | ~4.5 CUs/hr | ~6–8 mins | ~30 CUs (~6.5 hrs) | ~330 Loops |
 

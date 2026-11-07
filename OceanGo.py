@@ -33,10 +33,22 @@ GRID_SIZE = 40
 SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE
 
 # Cross-platform hardware acceleration:
-# 1. CUDA (NVIDIA GPU on Windows / Linux)
-# 2. MPS (Metal Performance Shaders on Apple Silicon macOS)
-# 3. CPU fallback
-if torch.cuda.is_available():
+# 1. CUDA (NVIDIA GPU on Windows / Linux / Colab T4, L4, A100)
+# 2. MPS (Metal Performance Shaders on Apple Silicon M-series macOS)
+# 3. TPU / XLA (Google Cloud TPU v5e-1 / v6e on Google Colab)
+# 4. CPU fallback
+# Note: Worker subprocesses only run CPU MCTS and push numpy states via queues,
+# so hardware accelerators are only initialized in the main process.
+IS_MAIN_PROCESS = (mp.current_process().name == "MainProcess")
+IS_TPU = False
+xm = None
+
+if not IS_MAIN_PROCESS:
+    # Keep worker subprocesses lightweight and prevent OpenMP thread contention
+    torch.set_num_threads(1)
+    device = torch.device("cpu")
+    device_name = f"CPU Worker ({platform.machine()})"
+elif torch.cuda.is_available():
     device = torch.device("cuda")
     torch.set_float32_matmul_precision('high')
     device_name = torch.cuda.get_device_name(0)
@@ -44,8 +56,26 @@ elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
     device = torch.device("mps")
     device_name = f"Apple Silicon Metal / MPS ({platform.machine()})"
 else:
-    device = torch.device("cpu")
-    device_name = f"CPU ({platform.machine()})"
+    tpu_env_present = any(
+        k in os.environ for k in ("TPU_NAME", "COLAB_TPU_ADDR", "PJRT_DEVICE", "XRT_TPU_CONFIG")
+    ) or os.path.exists("/dev/accel0") or os.path.exists("/dev/vfio")
+    if tpu_env_present:
+        try:
+            os.environ.setdefault("PJRT_DEVICE", "TPU")
+            import torch_xla.core.xla_model as _xm
+            xm = _xm
+            device = xm.xla_device()
+            IS_TPU = True
+            device_name = f"Google Cloud TPU ({xm.xla_real_devices([str(device)])[0]})"
+        except Exception:
+            device = torch.device("cpu")
+            device_name = f"CPU ({platform.machine()})"
+    else:
+        device = torch.device("cpu")
+        device_name = f"CPU ({platform.machine()})"
+
+# Fixed batch size buckets for TPU (XLA) to prevent dynamic-shape graph recompilations
+TPU_BATCH_BUCKETS = (16, 32, 64, 128, 256, 512)
 
 # --- Hyperparameters ---
 # Self-Play / Training
@@ -115,16 +145,21 @@ TRAIN_EPOCHS = 5
 # Gradient descent learning rate (SGD step size).
 LEARNING_RATE = 0.01
 
-# Multi-core allocation (safe across low or high CPU core counts)
+# Multi-core allocation (scales across local laptops, 8-vCPU Colab GPUs, and 44-vCPU Colab TPUs)
 sys_cores = os.cpu_count() or 1
-is_colab = ("COLAB_RELEASE_TAG" in os.environ or "COLAB_GPU" in os.environ or os.path.exists("/content"))
+is_colab = ("COLAB_RELEASE_TAG" in os.environ or "COLAB_GPU" in os.environ or "COLAB_TPU_ADDR" in os.environ or os.path.exists("/content"))
 if is_colab:
-    # On headless Google Colab VMs, use all vCPUs (minimum 4 workers to overlap CPU MCTS with GPU inference)
-    suggested_cores = max(4, sys_cores)
+    if sys_cores >= 16:
+        # High-CPU Colab VM (e.g., TPU v5e-1 with 44 vCPUs): reserve 2 cores for the central inference server
+        suggested_cores = sys_cores - 2
+    else:
+        # Standard/High-RAM GPU Colab VM (2 to 12 vCPUs): 1.5x oversubscription overlaps CPU MCTS with GPU inference
+        suggested_cores = max(4, int(sys_cores * 1.5))
+    PARALLEL_THREADS = min(64, suggested_cores)
 else:
     # On local macOS (M-series) or Windows (RTX GPU), reserve 2 cores so the desktop OS stays responsive
     suggested_cores = max(1, sys_cores - 2) if sys_cores > 2 else sys_cores
-PARALLEL_THREADS = min(14, suggested_cores)
+    PARALLEL_THREADS = min(32, suggested_cores)
 
 def init_environment():
     """Initializes logging and displays system runtime details (called once from main)."""
@@ -243,12 +278,14 @@ class GoGame:
         self._is_game_over_cache = None
 
     def copy(self):
-        g = GoGame(self.board_size)
+        g = GoGame.__new__(GoGame)
+        g.board_size = self.board_size
         g.board = self.board.copy()
         g.current_player = self.current_player
         g.history = self.history.copy()
         g.passes_in_a_row = self.passes_in_a_row
-        g.history_states = [b.copy() for b in self.history_states]
+        # Each historical board snapshot in history_states is immutable after insertion
+        g.history_states = self.history_states[:]
         g._legal_moves_cache = None
         g._is_game_over_cache = None
         return g
@@ -259,11 +296,13 @@ class GoGame:
     def get_nn_input(self):
         """ Returns 17 x board_size x board_size numpy array """
         planes = np.zeros((17, self.board_size, self.board_size), dtype=np.float32)
-        for i in range(8):
-            board_i = self.history_states[i]
-            planes[i] = (board_i == self.current_player).astype(np.float32)
-            planes[i+8] = (board_i == (3 - self.current_player)).astype(np.float32)
-        planes[16] = 1.0 if self.current_player == 1 else 0.0
+        cp = self.current_player
+        opp = 3 - cp
+        for i, board_i in enumerate(self.history_states):
+            planes[i] = (board_i == cp)
+            planes[i + 8] = (board_i == opp)
+        if cp == 1:
+            planes[16] = 1.0
         return planes
 
     def switch_player(self):
@@ -539,13 +578,87 @@ class GoGame:
         return self.get_score_breakdown()["winner"]
 
 # ====================================================
-#  Helper: Convert inputs to PyTorch Tensor
+#  Helper: Convert inputs to PyTorch Tensor & Accelerated Inference
 # ====================================================
 def boards_to_tensor(batch_of_inputs):
-    # batch_of_inputs is a list of 17-channel planes
-    arr_np = np.stack(batch_of_inputs, axis=0)
+    # batch_of_inputs is a list of 17-channel planes or a pre-stacked numpy array
+    arr_np = batch_of_inputs if isinstance(batch_of_inputs, np.ndarray) else np.stack(batch_of_inputs, axis=0)
     t = torch.from_numpy(arr_np).to(device)
     return t
+
+
+def _get_tpu_bucket_size(n: int) -> int:
+    for b in TPU_BATCH_BUCKETS:
+        if n <= b:
+            return b
+    return ((n + 63) // 64) * 64
+
+
+def forward_infer_batch(net, batch_of_inputs):
+    """
+    Runs a batched forward pass across CUDA (float16), Apple Silicon MPS,
+    Google Cloud TPU (XLA bfloat16 with fixed-bucket padding), or CPU.
+    Returns (policy_logits_np, value_out_np) for the exact number of input states.
+    """
+    arr_np = batch_of_inputs if isinstance(batch_of_inputs, np.ndarray) else np.stack(batch_of_inputs, axis=0)
+    n = arr_np.shape[0]
+
+    if IS_TPU:
+        bucket_n = _get_tpu_bucket_size(n)
+        if bucket_n > n:
+            pad_shape = (bucket_n - n,) + arr_np.shape[1:]
+            arr_np = np.concatenate([arr_np, np.zeros(pad_shape, dtype=arr_np.dtype)], axis=0)
+        input_tensor = torch.from_numpy(arr_np).to(device)
+        with torch.no_grad(), torch.amp.autocast("xla", dtype=torch.bfloat16):
+            policy_logits, value_out = net(input_tensor)
+        if xm is not None:
+            xm.mark_step()
+        policy_np = policy_logits.float().cpu().numpy()[:n]
+        value_np = value_out.float().squeeze(1).cpu().numpy()[:n]
+        return policy_np, value_np
+
+    input_tensor = torch.from_numpy(arr_np).to(device)
+    with torch.no_grad(), torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=(device.type == "cuda")):
+        policy_logits, value_out = net(input_tensor)
+    policy_np = policy_logits.float().cpu().numpy()
+    value_np = value_out.float().squeeze(1).cpu().numpy()
+    return policy_np, value_np
+
+
+def warmup_tpu_buckets(net):
+    """Pre-compiles the fixed XLA inference bucket shapes once on TPU so self-play never stalls on compilation."""
+    if not IS_TPU:
+        return
+    print(f"[TPU XLA] Pre-compiling fixed MCTS inference buckets {TPU_BATCH_BUCKETS} (one-time warmup)...")
+    b_size = net.board_size
+    was_training = net.training
+    net.eval()
+    t0 = time.time()
+    for b in TPU_BATCH_BUCKETS:
+        dummy = np.zeros((b, 17, b_size, b_size), dtype=np.float32)
+        _ = forward_infer_batch(net, dummy)
+    if was_training:
+        net.train()
+    print(f"[TPU XLA] Bucket compilation complete in {time.time() - t0:.1f}s.")
+
+
+def get_cpu_state_dict(net):
+    """Returns a CPU-resident state_dict so checkpoints saved on TPU/CUDA/MPS are 100% cross-platform portable."""
+    if IS_TPU and xm is not None:
+        xm.mark_step()
+    return {k: v.detach().cpu() for k, v in net.state_dict().items()}
+
+
+def get_cpu_optim_state_dict(optimizer):
+    """Returns a CPU-resident optimizer state_dict for cross-platform checkpoint portability."""
+    if IS_TPU and xm is not None:
+        xm.mark_step()
+    opt_sd = copy.deepcopy(optimizer.state_dict())
+    for state in opt_sd.get("state", {}).values():
+        for k, v in list(state.items()):
+            if isinstance(v, torch.Tensor):
+                state[k] = v.detach().cpu()
+    return opt_sd
 
 def softmax(x):
     e = np.exp(x - np.max(x))
@@ -681,26 +794,23 @@ def nn_batch_evaluate_and_expand(nodes, net=None, worker_id=None, req_queue=None
     batch = [nd.game_state.get_nn_input() for nd in eval_nodes]
 
     if net is not None:
-        input_tensor = boards_to_tensor(batch)
-        with torch.no_grad(), torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=(device.type == "cuda")):
-            policy_logits, value_out = net(input_tensor)
-        policy_logits = policy_logits.float().cpu().numpy()
-        value_out = value_out.float().squeeze(1).cpu().numpy()
+        policy_logits, value_out = forward_infer_batch(net, batch)
     else:
         req_queue.put((worker_id, batch))
         policy_logits, value_out = res_queue.get()
 
     board_s = eval_nodes[0].game_state.board_size
+    pass_idx = board_s * board_s
     for i, nd in enumerate(eval_nodes):
         nd.value = float(value_out[i])
         legal_moves = nd.game_state.get_legal_moves()
 
-        move_indices = [(board_s * board_s if mv == (-1, -1) else mv[0] * board_s + mv[1]) for mv in legal_moves]
-        selected_logits = [policy_logits[i][idx] for idx in move_indices]
-        if len(selected_logits) > 0:
-            probs = softmax(np.array(selected_logits))
+        move_indices = [(pass_idx if mv == (-1, -1) else mv[0] * board_s + mv[1]) for mv in legal_moves]
+        if move_indices:
+            selected_logits = policy_logits[i, move_indices]
+            probs = softmax(selected_logits)
         else:
-            probs = []
+            probs = ()
 
         for mv, p in zip(legal_moves, probs):
             nd.children[mv] = NN_MCTS_Node(game_state=None, parent=nd, move=mv, prior=p)
@@ -782,39 +892,66 @@ def mcts_run(root: "NN_MCTS_Node", net, n_simulations=50, temp=1.0, batch_size=8
 #        Self-Play: Generating Training Data
 # ====================================================
 
+_WORKER_REQ_QUEUE = None
+_WORKER_RES_QUEUES = None
+_WORKER_PROGRESS_QUEUE = None
+
+
+def _init_self_play_worker(req_queue, res_queues, progress_queue):
+    """Initializes direct OS-pipe multiprocessing queues in each worker subprocess."""
+    global _WORKER_REQ_QUEUE, _WORKER_RES_QUEUES, _WORKER_PROGRESS_QUEUE
+    _WORKER_REQ_QUEUE = req_queue
+    _WORKER_RES_QUEUES = res_queues
+    _WORKER_PROGRESS_QUEUE = progress_queue
+    torch.set_num_threads(1)
+
+
 def gpu_server_thread(net, req_queue, res_queues, total_workers):
     active_workers = total_workers
+    coalesce_window_sec = 0.001 if IS_TPU else 0.0004
     while active_workers > 0:
         requests = []
+        total_states = 0
         try:
             req = req_queue.get(timeout=0.1)
             if req == "DONE":
                 active_workers -= 1
                 continue
             requests.append(req)
-            while len(requests) < GPU_SERVER_BATCH_SIZE:
+            total_states += len(req[1])
+            waited_coalesce = False
+            while total_states < GPU_SERVER_BATCH_SIZE:
                 try:
                     req = req_queue.get_nowait()
                     if req == "DONE":
                         active_workers -= 1
                         continue
                     requests.append(req)
+                    total_states += len(req[1])
                 except queue.Empty:
+                    if not waited_coalesce and active_workers > 1 and total_states < 64:
+                        waited_coalesce = True
+                        try:
+                            req = req_queue.get(timeout=coalesce_window_sec)
+                            if req == "DONE":
+                                active_workers -= 1
+                                continue
+                            requests.append(req)
+                            total_states += len(req[1])
+                            continue
+                        except queue.Empty:
+                            break
                     break
         except queue.Empty:
             continue
-            
+
         if requests:
             all_inputs = []
             for w_id, inputs in requests:
                 all_inputs.extend(inputs)
-                
-            input_tensor = boards_to_tensor(all_inputs)
-            with torch.no_grad(), torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=(device.type == "cuda")):
-                policy_logits, value_out = net(input_tensor)
-            policy_logits = policy_logits.float().cpu().numpy()
-            value_out = value_out.float().squeeze(1).cpu().numpy()
-            
+
+            policy_logits, value_out = forward_infer_batch(net, all_inputs)
+
             offset = 0
             for w_id, inputs in requests:
                 n = len(inputs)
@@ -823,12 +960,20 @@ def gpu_server_thread(net, req_queue, res_queues, total_workers):
                 res_queues[w_id].put((p, v))
                 offset += n
 
-def self_play_wrapper(board_size, n_mcts_sims, temp, worker_id, num_games, req_queue, res_queue, progress_queue):
+def self_play_wrapper(board_size, n_mcts_sims, temp, worker_id, num_games, req_queue=None, res_queue=None, progress_queue=None):
+    if req_queue is None:
+        req_queue = _WORKER_REQ_QUEUE
+    if res_queue is None and _WORKER_RES_QUEUES is not None:
+        res_queue = _WORKER_RES_QUEUES[worker_id]
+    if progress_queue is None:
+        progress_queue = _WORKER_PROGRESS_QUEUE
+
     data = []
     for g in range(num_games):
         game_data = self_play_one_game(net=None, board_size=board_size, n_mcts_sims=n_mcts_sims, temp=temp, game_idx=g+1, worker_id=worker_id, req_queue=req_queue, res_queue=res_queue)
         data.extend(game_data)
-        progress_queue.put(1)
+        if progress_queue is not None:
+            progress_queue.put(1)
     return data
 
 def self_play_one_game(net=None, board_size=BOARD_SIZE, n_mcts_sims=50, temp=1.0, game_idx=1, worker_id=None, req_queue=None, res_queue=None):
@@ -960,8 +1105,8 @@ def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_
     else:
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
-    use_amp = (device.type == "cuda")
-    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+    use_cuda_amp = (device.type == "cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=use_cuda_amp)
     net.train()
 
     X_inputs = []
@@ -988,6 +1133,9 @@ def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_
         for batch_idx, start_idx in enumerate(range(0, n_samples, batch_size)):
             end_idx = start_idx + batch_size
             excerpt = indices[start_idx:end_idx]
+            if IS_TPU and len(excerpt) < batch_size:
+                # Pad the final remainder batch by wrapping indices so XLA sees a single static training batch shape
+                excerpt = np.resize(indices, batch_size) if n_samples < batch_size else np.concatenate([excerpt, indices[:batch_size - len(excerpt)]])
 
             batch_inputs = [X_inputs[i] for i in excerpt]
             inp = boards_to_tensor(batch_inputs)
@@ -995,24 +1143,45 @@ def train_policy_value_net(net, data, batch_size=TRAIN_BATCH_SIZE, epochs=TRAIN_
             tgt_v = torch.from_numpy(value_targets[excerpt]).to(device)
 
             optimizer.zero_grad()
-            with torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
-                out_p, out_v = net(inp)
-                out_p = out_p[:, :board_size*board_size + 1]
+            if IS_TPU:
+                with torch.amp.autocast("xla", dtype=torch.bfloat16):
+                    out_p, out_v = net(inp)
+                    out_p = out_p[:, :board_size*board_size + 1]
 
-                logp = F.log_softmax(out_p, dim=1)
-                policy_loss = -torch.sum(tgt_p * logp, dim=1).mean()
+                    logp = F.log_softmax(out_p, dim=1)
+                    policy_loss = -torch.sum(tgt_p * logp, dim=1).mean()
 
-                value_loss = F.mse_loss(out_v, tgt_v)
-                loss = policy_loss + value_loss
+                    value_loss = F.mse_loss(out_v, tgt_v)
+                    loss = policy_loss + value_loss
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-            batch_losses.append(loss.item())
+                loss.backward()
+                if xm is not None:
+                    xm.optimizer_step(optimizer, barrier=True)
+                else:
+                    optimizer.step()
+            else:
+                with torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=use_cuda_amp):
+                    out_p, out_v = net(inp)
+                    out_p = out_p[:, :board_size*board_size + 1]
+
+                    logp = F.log_softmax(out_p, dim=1)
+                    policy_loss = -torch.sum(tgt_p * logp, dim=1).mean()
+
+                    value_loss = F.mse_loss(out_v, tgt_v)
+                    loss = policy_loss + value_loss
+
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+
+            loss_val = float(loss.detach().cpu().item())
+            batch_losses.append(loss_val)
 
             # Print live progress bar in the terminal
             if (batch_idx + 1) % 10 == 0 or (batch_idx + 1) == total_batches:
-                print_train_progress(ep + 1, epochs, batch_idx + 1, total_batches, loss.item(), policy_loss.item(), value_loss.item(), epoch_start_time)
+                p_val = float(policy_loss.detach().cpu().item())
+                v_val = float(value_loss.detach().cpu().item())
+                print_train_progress(ep + 1, epochs, batch_idx + 1, total_batches, loss_val, p_val, v_val, epoch_start_time)
 
         logging.info(f"Epoch {ep+1}/{epochs}, Loss={np.mean(batch_losses):.4f}")
 
@@ -1544,7 +1713,7 @@ def run_interactive_game(net, human_color="black"):
                     msg_str = f"AI played {best_move}. Your turn ({h_col_str})."
 
 def main():
-    global BOARD_SIZE, SCREEN_SIZE, DIRICHLET_ALPHA
+    global BOARD_SIZE, SCREEN_SIZE, DIRICHLET_ALPHA, PARALLEL_THREADS
     init_environment()
     parser = argparse.ArgumentParser(description="OceanGo - AlphaZero styled Go AI")
     parser.add_argument("--model", type=str, default="", help="Path to specific model to load (e.g. checkpoints/policy_value_net_iter_5.pth)")
@@ -1557,7 +1726,11 @@ def main():
     parser.add_argument("--games", type=int, default=N_GAMES_PER_ITER, help=f"Number of self-play games per iteration (default: {N_GAMES_PER_ITER})")
     parser.add_argument("--sims", type=int, default=N_MCTS_SIMS, help=f"Number of MCTS simulations per move (default: {N_MCTS_SIMS})")
     parser.add_argument("--iters", type=int, default=N_ITER, help=f"Number of outer loop iterations (default: {N_ITER})")
+    parser.add_argument("--workers", type=int, default=0, help=f"Number of parallel CPU self-play workers (default: auto = {PARALLEL_THREADS})")
     args = parser.parse_args()
+
+    if args.workers > 0:
+        PARALLEL_THREADS = args.workers
 
     BOARD_SIZE = args.board_size
     SCREEN_SIZE = (BOARD_SIZE + 1) * GRID_SIZE
@@ -1590,7 +1763,8 @@ def main():
     net = PolicyValueNet(board_size=BOARD_SIZE).to(device)
     
     if os.path.isfile(load_path):
-        state_dict = torch.load(load_path, map_location=device)
+        # Load onto CPU first for seamless cross-device portability (TPU <-> CUDA <-> MPS <-> CPU)
+        state_dict = torch.load(load_path, map_location="cpu")
         # Check if the checkpoint matches the requested board size
         expected_actions = BOARD_SIZE * BOARD_SIZE + 1
         ckpt_actions = state_dict["policy_fc.weight"].shape[0] if "policy_fc.weight" in state_dict else expected_actions
@@ -1623,6 +1797,7 @@ def main():
     if args.dry_run:
         print("\n[Dry-Run] Running quick end-to-end verification...")
         print(f"[Dry-Run] Hardware Device: {device_name} ({device.type.upper()})")
+        print(f"[Dry-Run] CPU Cores Detected: {sys_cores} (Parallel Workers Configured: {PARALLEL_THREADS})")
         print(f"[Dry-Run] Board Size: {BOARD_SIZE}x{BOARD_SIZE} (Temp cutoff: move {get_temp_threshold(BOARD_SIZE)}, Dirichlet alpha: {DIRICHLET_ALPHA})")
         t0 = time.time()
         test_data = self_play_one_game(net=net, board_size=BOARD_SIZE, n_mcts_sims=5, game_idx=1)
@@ -1633,7 +1808,7 @@ def main():
         train_policy_value_net(net, aug_data, batch_size=min(16, len(aug_data)), epochs=1, lr=LEARNING_RATE)
         os.makedirs(args.save_dir, exist_ok=True)
         test_save_path = os.path.join(args.save_dir, "dry_run_test.pth")
-        torch.save(net.state_dict(), test_save_path)
+        torch.save(get_cpu_state_dict(net), test_save_path)
         print(f"[Dry-Run] Checkpoint write confirmed: {test_save_path}")
         print("[Dry-Run] SUCCESS: Everything is functional and verified ready for full training!\n")
         return
@@ -1681,7 +1856,7 @@ def main():
     train_state_path = os.path.join(checkpoints_dir, f"train_state_{BOARD_SIZE}x{BOARD_SIZE}.pth")
     if start_iter > 0 and os.path.isfile(train_state_path):
         try:
-            train_state = torch.load(train_state_path, map_location=device, weights_only=False)
+            train_state = torch.load(train_state_path, map_location="cpu", weights_only=False)
             if "optimizer" in train_state:
                 optimizer.load_state_dict(train_state["optimizer"])
             if "replay_buffer" in train_state and isinstance(train_state["replay_buffer"], list):
@@ -1689,6 +1864,12 @@ def main():
                 print(f"Restored optimizer momentum and {len(REPLAY_BUFFER)} replay buffer states from {train_state_path}.")
         except Exception as e:
             logging.warning(f"Could not restore auxiliary train_state ({e}); continuing with fresh optimizer state.")
+
+    # Pre-compile fixed TPU XLA bucket shapes once before starting self-play
+    warmup_tpu_buckets(net)
+
+    # Use 'spawn' multiprocessing context on TPU (XLA) to avoid PJRT fork deadlocks; native default elsewhere
+    mp_ctx = mp.get_context("spawn") if IS_TPU else mp.get_context()
 
     # 2) Self-play / 3) Train 
     total_start_time = time.time()
@@ -1702,37 +1883,36 @@ def main():
 
         # Gather data from self-play (Parallelized)
         iteration_data = []
-        print(f"  Starting {n_games} self-play games simultaneously (Parallel Execution)...")
-        logging.info(f"  Starting {n_games} parallel games in iteration {iteration+1}...")
+        num_workers = max(1, min(PARALLEL_THREADS, n_games))
+        print(f"  Starting {n_games} self-play games simultaneously across {num_workers} parallel workers...")
+        logging.info(f"  Starting {n_games} parallel games across {num_workers} workers in iteration {iteration+1}...")
 
-        # Dispatch parallel self-play games explicitly via multi-processing (Bypasses Python GIL)
-        print(f"  Allocating {PARALLEL_THREADS} parallel processing cores (Central GPU Queue Mode).")
-        logging.info(f"  Allocating {PARALLEL_THREADS} parallel processing cores (Central GPU Queue Mode).")
+        # Direct OS-pipe queues (bypasses mp.Manager proxy bottleneck)
+        req_queue = mp_ctx.Queue()
+        res_queues = [mp_ctx.Queue() for _ in range(num_workers)]
+        progress_queue = mp_ctx.Queue()
 
-        mp_manager = mp.Manager()
-        req_queue = mp_manager.Queue()
-        res_queues = [mp_manager.Queue() for _ in range(PARALLEL_THREADS)]
-        progress_queue = mp_manager.Queue()
-        
-        gpu_thread = threading.Thread(target=gpu_server_thread, args=(net, req_queue, res_queues, PARALLEL_THREADS))
+        gpu_thread = threading.Thread(target=gpu_server_thread, args=(net, req_queue, res_queues, num_workers))
         gpu_thread.start()
 
-        with concurrent.futures.ProcessPoolExecutor(max_workers=PARALLEL_THREADS) as executor:
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=num_workers,
+            mp_context=mp_ctx,
+            initializer=_init_self_play_worker,
+            initargs=(req_queue, res_queues, progress_queue),
+        ) as executor:
             futures = []
-            games_per_worker = max(1, n_games // PARALLEL_THREADS)
-            
-            for w_id in range(PARALLEL_THREADS):
-                num_games = games_per_worker
-                if w_id == PARALLEL_THREADS - 1:
-                    num_games = n_games - games_per_worker * (PARALLEL_THREADS - 1)
-                
+            base_games, rem_games = divmod(n_games, num_workers)
+
+            for w_id in range(num_workers):
+                num_games = base_games + (1 if w_id < rem_games else 0)
                 if num_games > 0:
-                    f = executor.submit(self_play_wrapper, BOARD_SIZE, n_sims, 1.0, w_id, num_games, req_queue, res_queues[w_id], progress_queue)
+                    f = executor.submit(self_play_wrapper, BOARD_SIZE, n_sims, 1.0, w_id, num_games)
                     futures.append(f)
-            
+
             completed_games = 0
             iteration_games_start_time = time.time()
-            
+
             # Live Progress Bar Loop
             while completed_games < n_games:
                 try:
@@ -1743,7 +1923,7 @@ def main():
                         logging.info(f"  Self-play progress: {completed_games}/{n_games} games completed.")
                 except queue.Empty:
                     pass
-            
+
             for future in futures:
                 game_data = future.result()
                 augmented_data = get_equi_data(game_data)
@@ -1770,14 +1950,15 @@ def main():
         else:
             print("No training data available yet.")
 
-        # 4) Save the net (overwrites latest file and logs a checkpoint)
-        torch.save(net.state_dict(), "policy_value_net.pth")
+        # 4) Save the net as CPU-portable tensors (compatible across TPU, CUDA, MPS, and CPU)
+        cpu_sd = get_cpu_state_dict(net)
+        torch.save(cpu_sd, "policy_value_net.pth")
         checkpoint_path = os.path.join(checkpoints_dir, f"policy_value_net_iter_{iteration+1}.pth")
-        torch.save(net.state_dict(), checkpoint_path)
-        torch.save({"optimizer": optimizer.state_dict(), "replay_buffer": REPLAY_BUFFER}, train_state_path)
+        torch.save(cpu_sd, checkpoint_path)
+        torch.save({"optimizer": get_cpu_optim_state_dict(optimizer), "replay_buffer": REPLAY_BUFFER}, train_state_path)
         # Also copy to checkpoints_dir/policy_value_net.pth if saving to custom dir (e.g. Google Drive)
         if checkpoints_dir != "." and checkpoints_dir != "checkpoints":
-            torch.save(net.state_dict(), os.path.join(checkpoints_dir, "policy_value_net.pth"))
+            torch.save(cpu_sd, os.path.join(checkpoints_dir, "policy_value_net.pth"))
         print(f"Model state saved sequentially to {checkpoint_path}.")
         logging.info(f"Model saved at iteration {iteration+1} to checkpoint folder and base 'policy_value_net.pth'.")
 
