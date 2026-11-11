@@ -106,14 +106,156 @@ python OceanGo.py --train --board-size 19 --games 250 --sims 600 --iters 50
 
 ---
 
-## 5. Playing Interactively Against the AI
+## 5. Optimal Hyperparameters for Maximum Strength Across All 3 Board Sizes (`9x9 -> 13x13 -> 19x19`)
+
+Because Stage 2 (`13x13`) and Stage 3 (`19x19`) automatically inherit the exact trunk depth (`--blocks`) and filter width (`--channels`) saved in Stage 1 (`9x9`), choosing your backbone capacity at **Stage 1** determines the ceiling of your final `19x19` model.
+
+### A. Best-Performance 3-Stage Curriculum Commands
+
+#### Preset 1: Flagship Maximum Strength (`18 blocks × 256 channels`, ~22M params)
+Recommended for **RTX 5060 Ti (16GB)**, **RTX 5090 (32GB)**, **RTX 4070/4080/4090**, or **Cloud L4 / A100 / TPU `v5e-1`**. Pairs AlphaZero's `256`-channel trunk width with KataGo Global-Pooling and deep MCTS search across all three board sizes:
 
 ```bash
-# Play as Black (uses checkpoint's native board size automatically)
-python OceanGo.py --play
+# Stage 1 (9x9 — Tactical Reading, Captures, Ko & Life-and-Death | Global Iters 1 -> 40)
+python OceanGo.py --train \
+    --board-size 9 --blocks 18 --channels 256 \
+    --games 600 --sims 800 --iters 40 \
+    --lr 0.01 --replay-ratio 1.5 --eval-interval 5 --eval-games 20
 
-# Play as White against a specific checkpoint on any board size (e.g., 19x19)
-python OceanGo.py --play --color white --board-size 19 --play-symmetries 8
+# Stage 2 (13x13 — Joseki, Ladders & Whole-Board Influence | Global Iters 41 -> 85)
+python OceanGo.py --train \
+    --board-size 13 \
+    --games 500 --sims 800 --iters 45 \
+    --lr 0.01 --replay-ratio 1.5 --eval-interval 5 --eval-games 20
+
+# Stage 3 (19x19 — Full-Board Fuseki, Fighting & Endgame Yose | Global Iters 86 -> 145)
+python OceanGo.py --train \
+    --board-size 19 \
+    --games 300 --sims 1000 --iters 60 \
+    --lr 0.005 --replay-ratio 1.8 --eval-interval 5 --eval-games 20
+```
+
+*(Tip: On Linux or Windows setups with Triton/MSVC compiler support, append `--compile` for an additional ~15–25% GPU throughput boost).*
+
+#### Preset 2: Balanced High-Efficiency (`15 blocks × 192 channels`, ~10.8M params)
+Recommended for **Apple Silicon Macs (`MPS`)**, **8–12 GB VRAM GPUs**, or faster turnaround:
+
+```bash
+# Stage 1 (9x9 | Global Iters 1 -> 30)
+python OceanGo.py --train --board-size 9 --blocks 15 --channels 192 --games 500 --sims 600 --iters 30 --lr 0.01
+
+# Stage 2 (13x13 | Global Iters 31 -> 65)
+python OceanGo.py --train --board-size 13 --games 400 --sims 600 --iters 35 --lr 0.01
+
+# Stage 3 (19x19 | Global Iters 66 -> 115)
+python OceanGo.py --train --board-size 19 --games 250 --sims 800 --iters 50 --lr 0.005 --replay-ratio 1.8
+```
+
+### B. Why These Stage Parameters Maximize Final Strength
+
+| Stage | Board | `--iters` | `--lr` Schedule Behavior (`stage_iter`) | Strategic Purpose |
+|:---:|:---:|:---:|:---|:---|
+| **Stage 1** | `9x9` | `40` | `0.01` (iters `1–25`) -> `0.003` (iters `26–40`) | Fast short games rapidly teach exact liberty counting, eye formation, ko fights, and dead-stone ownership before dropping LR (`0.3x`) to lock in clean local filters. |
+| **Stage 2** | `13x13` | `45` | 2-iter warmup (`0.0025` -> `0.006`) -> `0.01` (`3–25`) -> `0.003` (`26–45`) | Gently adapts BatchNorm and GlobalPool scaling $s(N)$ without shock, then learns corner-to-side interactions, ladders, and territory vs. influence balance. |
+| **Stage 3** | `19x19` | `60` | 2-iter warmup (`0.00125` -> `0.003`) -> `0.005` (`3–25`) -> `0.0015` (`26–45`) -> `0.0005` (`46–60`) | Lower base `--lr 0.005` preserves pre-trained tactical filters while spanning **all three** LR decay tiers down to `0.0005` (`0.1x`) with deeper `--sims 1000` reading and `1.8x` sample reuse. |
+
+---
+
+### C. Model Save Staging & Directory Layout During Training
+
+All three curriculum stages run in the **same `checkpoints/` directory** without ever overwriting earlier iteration history or mixing incompatible board-size buffers:
+
+```text
+OceanGo/
+├── policy_value_net.pth                        # Always mirrors the latest completed iteration
+├── logs_YYYYMMDD_HHMMSS.log                    # Detailed per-run timestamped training log
+└── checkpoints/
+    ├── policy_value_net.pth                    # Latest V2 checkpoint (auto-detected on resume / --play)
+    ├── policy_value_net_iter_1.pth             # ──┐ Stage 1 (9x9) snapshots: iter 1 .. 40
+    ├── ...                                     #   │
+    ├── policy_value_net_iter_40.pth            # ──┘
+    ├── policy_value_net_best_9x9.pth           # Peak Arena-promoted 9x9 champion model
+    ├── train_state_v2_9x9.pth                  # 9x9 SGD momentum + compact uint16 replay buffer
+    │
+    ├── policy_value_net_iter_41.pth            # ──┐ Stage 2 (13x13) snapshots: iter 41 .. 85
+    ├── ...                                     #   │ (100% weight transfer from iter_40)
+    ├── policy_value_net_iter_85.pth            # ──┘
+    ├── policy_value_net_best_13x13.pth         # Peak Arena-promoted 13x13 champion model
+    ├── train_state_v2_13x13.pth                # 13x13 SGD momentum + compact uint16 replay buffer
+    │
+    ├── policy_value_net_iter_86.pth            # ──┐ Stage 3 (19x19) snapshots: iter 86 .. 145
+    ├── ...                                     #   │ (100% weight transfer from iter_85)
+    ├── policy_value_net_iter_145.pth           # ──┘
+    ├── policy_value_net_best_19x19.pth         # Peak Arena-promoted 19x19 champion model
+    └── train_state_v2_19x19.pth                # 19x19 SGD momentum + compact uint16 replay buffer
+```
+
+#### Key Staging Behaviors to Know:
+1. **Continuous Global `iter_X` Numbering vs. Reset `Stage Iter`**:
+   - `Iteration` (`policy_value_net_iter_X.pth`) increments monotonically (`1 -> 40 -> 85 -> 145`) so every historical checkpoint across your entire curriculum is preserved.
+   - `Stage Iter` resets to `1` whenever `--board-size` changes so each new board size gets its full `--iters` count, a 2-iteration warmup, and a fresh LR schedule.
+2. **Per-Board Champion Models (`policy_value_net_best_{N}x{N}.pth`)**:
+   - Every `--eval-interval 5` iterations, the candidate model plays `20` paired games (`10` Black + `10` White from varied 2-move openings) against the current reference model.
+   - Whenever the candidate achieves **`>= 52%` win rate**, `[PROMOTED NEW REFERENCE]` is printed and `policy_value_net_best_{N}x{N}.pth` is updated. After finishing all 3 stages, you can play against your final universal model *or* load each board's dedicated champion (`--model checkpoints/policy_value_net_best_9x9.pth`).
+3. **Safe Interrupt & Resume (`Ctrl+C`)**:
+   - Stopping mid-stage (e.g., during Iteration `53` on `13x13`) is completely safe—all completed iterations up to `iter_52.pth` and `train_state_v2_13x13.pth` are already on disk. Re-running the Stage 2 command resumes cleanly at `Iteration 53/85` with full replay buffer and SGD momentum intact.
+
+---
+
+### D. What to Expect to See in the Terminal
+
+#### 1. Startup & Curriculum Stage Transition
+When launching Stage 2 (`--board-size 13`) after Stage 1 (`9x9`), expect to see:
+```text
+========================================
+OceanGo V2 Initializing...
+OS Platform: Windows (AMD64)
+Computing Device: CUDA | NVIDIA GeForce RTX 5060 Ti (16.0 GB VRAM, sm_120)
+Precision & Layout: bfloat16 | channels_last
+System Memory: 32.0 GB RAM | Replay Cap: 500,000 states
+CPU Threads: 16 available | Using 14 self-play workers
+========================================
+
+[Curriculum Transfer] Loaded 100% of weights from 9x9 checkpoint 'checkpoints/policy_value_net_iter_40.pth' into 13x13 (18 blocks x 256 channels)!
+[Curriculum Transition] Initialized fresh 13x13 replay buffer, reset SGD momentum, and scheduled 2-iteration LR warmup.
+```
+Notice on the first two transition iterations (`Stage Iter: 1` and `Stage Iter: 2`), `LR` automatically warms up (`0.25x` then `0.60x` of base `--lr`) before stepping up to full `--lr` on `Stage Iter: 3`.
+
+#### 2. Per-Iteration Self-Play, Training & Arena Output
+```text
+==== Iteration 45/85 (Board: 13x13 | Stage Iter: 5 | LR: 0.01000 | Elo: 1245) ====
+  Running 500 self-play games across 14 shared-memory workers (Full: 800 sims, Fast: 160 sims)...
+  Self-Play: [████████████████████████████] 500/500 (100.0%) | 1.420 games/s | Elapsed: 00:05:52 | ETA: 00:00:00
+  Self-Play Telemetry: +58,410 unique states (Buffer: 284,120) | Avg Len: 116.8 | Resigned: 312/500 | False-Resign: 1.8% (2/111) | Search Entropy: 1.64
+  Training on 87,808 GPU-augmented samples (343 steps, ratio=1.50x new states)...
+  Train [████████████████████] 343/343 (100.0%) | Loss: 2.841 (P:1.982 V:0.541 O:0.418 H:1.89) | 18.4 step/s
+  Running Arena Evaluation (20 paired games @ 160 sims vs reference model)...
+  Arena Result (9.4s): 13W-7L-0D (Win Rate: 65.0%, ΔElo: +108 -> Est. Elo: 1353) [PROMOTED NEW REFERENCE]
+  Saved V2 checkpoint -> checkpoints/policy_value_net_iter_45.pth (Duration: 381.2s)
+```
+
+#### 3. How to Read the Health Metrics
+- **`P` (Policy Cross-Entropy Loss)** & **`H` / `Search Entropy`**:
+  - Starts near $\ln(N^2 + 1)$ (`~4.4` on `9x9`, `~5.1` on `13x13`, `~5.9` on `19x19`) on Iteration 1, then drops steadily into the `1.4 – 2.6` range as MCTS and the Policy Head focus on strong candidate moves. Note a temporary bump in `P` right when transitioning to a larger board (`9 -> 13 -> 19`) is completely normal because the action space expands (`82 -> 170 -> 362`).
+- **`V` (Value `BCEWithLogits` Loss)**:
+  - Random/even guessing corresponds to $\ln(2) \approx 0.693$. Healthy training sits around **`0.45 – 0.66`** (never dropping to `0.00`, because evenly matched self-play games remain competitive!). Unlike V1's MSE loss, `BCEWithLogits` stays gradient-active even in decisive positions.
+- **`O` (Ownership `BCEWithLogits` Loss)**:
+  - Starts near `~0.69` and steadily falls toward **`0.20 – 0.40`** as the network learns to classify live groups, dead stones, and territory boundaries accurately.
+- **`Resigned` & `False-Resign %`**:
+  - On Iteration 1–2, `Resigned` will be near `0` while the value head is uncertain; as value confidence grows, up to `~50–70%` of games resign early (saving time), while `25%` always play to double-pass. Healthy **`False-Resign` stays `< 5%`**.
+- **`Est. Elo`**:
+  - Starts at `1000` and accumulates Arena $\Delta\text{Elo}$ gains across all three stages (`9x9 -> 13x13 -> 19x19`). Occasional non-promoted Arena checks (`Win Rate < 52%`) are normal statistical variance over 20 games; `ref_net` holds the strongest milestone until beaten.
+
+---
+
+## 6. Playing Interactively Against the AI
+
+```bash
+# Play against your strongest trained model (auto-loads latest V2 checkpoint)
+python OceanGo.py --play --sims 1200 --play-symmetries 8
+
+# Play against a specific board's Arena-promoted champion checkpoint as White
+python OceanGo.py --play --model checkpoints/policy_value_net_best_19x19.pth --color white --sims 1200 --play-symmetries 8
 ```
 
 ### Interactive Controls & Features
@@ -126,7 +268,7 @@ python OceanGo.py --play --color white --board-size 19 --play-symmetries 8
 
 ---
 
-## 6. Inspecting Model Metadata & Parameters
+## 7. Inspecting Model Metadata & Parameters
 
 To inspect checkpoint metadata (`version`, `blocks`, `channels`, `board_size`, `iteration`, `elo_est`) and verify cross-board (`9x9`, `13x13`, `19x19`) forward shapes:
 ```bash
