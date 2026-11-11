@@ -117,22 +117,13 @@ Recommended for **RTX 5060 Ti (16GB)**, **RTX 5090 (32GB)**, **RTX 4070/4080/409
 
 ```bash
 # Stage 1 (9x9 — Tactical Reading, Captures, Ko & Life-and-Death | Global Iters 1 -> 40)
-python OceanGo.py --train \
-    --board-size 9 --blocks 18 --channels 256 \
-    --games 600 --sims 800 --iters 40 \
-    --lr 0.01 --replay-ratio 1.5 --eval-interval 5 --eval-games 20
+python OceanGo.py --train --board-size 9 --blocks 18 --channels 256 --games 600 --sims 800 --iters 40 --lr 0.01 --replay-ratio 1.5 --eval-interval 5 --eval-games 20
 
 # Stage 2 (13x13 — Joseki, Ladders & Whole-Board Influence | Global Iters 41 -> 85)
-python OceanGo.py --train \
-    --board-size 13 \
-    --games 500 --sims 800 --iters 45 \
-    --lr 0.01 --replay-ratio 1.5 --eval-interval 5 --eval-games 20
+python OceanGo.py --train --board-size 13 --games 500 --sims 800 --iters 45 --lr 0.01 --replay-ratio 1.5 --eval-interval 5 --eval-games 20
 
 # Stage 3 (19x19 — Full-Board Fuseki, Fighting & Endgame Yose | Global Iters 86 -> 145)
-python OceanGo.py --train \
-    --board-size 19 \
-    --games 300 --sims 1000 --iters 60 \
-    --lr 0.005 --replay-ratio 1.8 --eval-interval 5 --eval-games 20
+python OceanGo.py --train --board-size 19 --games 300 --sims 1000 --iters 60 --lr 0.005 --replay-ratio 1.8 --eval-interval 5 --eval-games 20
 ```
 
 *(Tip: On Linux or Windows setups with Triton/MSVC compiler support, append `--compile` for an additional ~15–25% GPU throughput boost).*
