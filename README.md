@@ -55,9 +55,9 @@ rem 1. Create and activate venv
 python -m venv .venv
 .venv\Scripts\activate
 
-rem 2. Install PyTorch with CUDA 12.1 (for NVIDIA GPUs) and dependencies
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install -r requirements.txt
+rem 2. Install PyTorch with CUDA 12.8 (supports RTX 5060 Ti / 5090 Blackwell & RTX 30/40) and dependencies
+pip install torch --index-url https://download.pytorch.org/whl/cu128
+pip install numpy pygame
 
 rem 3. Test hardware accelerator
 python t.py

@@ -1,3 +1,6 @@
+# Note: On Windows/Linux with NVIDIA GPUs (especially RTX 5060 Ti / RTX 5090 Blackwell),
+# install CUDA 12.8 PyTorch first (handled automatically by setup_venv.bat / setup_venv.sh):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
 numpy
 pygame
 torch

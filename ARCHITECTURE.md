@@ -1,244 +1,127 @@
-# OceanGo: AlphaZero Architecture & MCTS Mathematical Guide
+# OceanGo V2: Board-Agnostic Global-Pooling Architecture & MCTS Mathematical Guide
 
-This document provides a comprehensive, deep-dive explanation of the artificial intelligence architecture powering **OceanGo**. It details the mathematical foundations, neural network design, Monte Carlo Tree Search (MCTS) algorithm, and reinforcement learning self-play training loop inspired by DeepMind's seminal AlphaGo Zero and AlphaZero research.
+This document details the mathematical foundations, neural network architecture, fast incremental Go engine, Monte Carlo Tree Search (MCTS) optimizations, and reinforcement learning curriculum powering **OceanGo V2**.
+
+OceanGo V2 combines **DeepMind's AlphaGo Zero / AlphaZero** self-play framework with key **KataGo** sample-efficiency innovations so a single consumer workstation (e.g., **Ryzen 7 5800XT + RTX 5060 Ti 16GB**, **Ryzen 9 7900 + RTX 5090**, or **Apple Silicon Mac**) can train progressively across **`9x9` $\to$ `13x13` $\to$ `19x19`** with **100% weight transfer**.
 
 ---
 
-## 1. High-Level Architecture Overview
-
-OceanGo learns to play Go entirely through **reinforcement learning from self-play (Tabula Rasa)** without relying on human games, opening books, or handcrafted heuristics. The system consists of two tightly coupled engines:
-
-1. **A Dual-Head Deep Residual Neural Network ($f_\theta$)**: Evaluates board positions to predict both:
-   - **Policy ($\mathbf{p}$)**: Probability distribution over all legal moves.
-   - **Value ($v$)**: Estimated game outcome from the current player's perspective ($v \in [-1, +1]$).
-2. **Monte Carlo Tree Search (MCTS)**: Uses the neural network as an evaluation and exploration guide to search several moves ahead, building a search policy $\boldsymbol{\pi}$ that is significantly stronger than the raw neural network policy $\mathbf{p}$.
+## 1. High-Level System Architecture
 
 ```mermaid
 flowchart LR
-    A["Board State (s)"] --> B["Deep ResNet f_θ(s)"]
-    B --> C["Prior Policy p"]
-    B --> D["Value v"]
-    C & D --> E["PUCT MCTS Search"]
-    E --> F["Improved Search Policy π"]
-    F --> G["Self-Play Action Selection"]
-    G --> H["Experience Replay Buffer"]
-    H --> I["SGD Loss Backprop"]
-    I --> B
+    subgraph Workers["CPU Self-Play Pool (5800XT / 7900 / Apple Silicon)"]
+        G["Fast GoGame Engine (64-bit Zobrist + Bitmask Chains)"] --> M["MCTS (Parent FPU + Dynamic PUCT + Subtree Reuse + Playout Cap)"]
+    end
+    M <-->|"Shared Memory uint8/fp32 Slots"| S["GPU Inference Server (bfloat16 + channels_last)"]
+    S --> N["Board-Agnostic GlobalPool ResNet (15x192)"]
+    N --> H1["Spatial + Pooled Pass Policy Head"]
+    N --> H2["GlobalPool Value Head (BCE Logit)"]
+    N --> H3["Aux Ownership Head (NxN)"]
+    M -->|"Bit-Packed uint16[N,N]"| R["Compact Replay Buffer (GPU 8x Symmetry)"]
+    R --> T["Controlled-Ratio Multi-Task Trainer"]
+    T -->|"100% Weight Transfer"| C["Curriculum: 9x9 -> 13x13 -> 19x19"]
 ```
 
 ---
 
-## 2. Input Representation: 17 Feature Planes
+## 2. Fast Incremental Go Engine (`GoGame`)
 
-The state of a Go board cannot be fully understood from a single static snapshot because of rules involving **liberties, captured chains, and positional superko** (repetition of board states). OceanGo feeds the neural network an input tensor of shape:
+Evaluating MCTS leaves on `19x19` requires tens of thousands of legality, capture, and positional superko checks per second across CPU workers. OceanGo V2 eliminates Python BFS scans and byte-string board hashing via three exact data structures:
 
-$$\text{Shape: } [17 \times N \times N]$$
+1. **64-Bit Zobrist Hashing**:
+   - Deterministic 64-bit Zobrist keys $Z(c, p)$ are precomputed per color $c \in \{1, 2\}$ and board index $p \in [0, N^2 - 1]$.
+   - Each connected stone chain stores its cumulative XOR hash $Z(C) = \bigoplus_{s \in C} Z(c, s)$.
+   - Placing a stone or capturing a 50-stone dragon updates `board_hash` in $O(1)$ integer XOR operations, storing positional superko `history` as a compact `set[int]`.
+2. **Immutable Bitmask Stone Chains ($O(1)$ Legality & Liberties)**:
+   - Each chain is represented as an immutable 4-tuple `(color, stones_mask, neighbor_mask, zobrist_hash)` where `stones_mask` and `neighbor_mask` are Python arbitrary-precision `int` bitsets (up to 361 bits).
+   - Because `empty_mask` tracks all empty intersections on the board, the exact liberty bitmask of *any* chain $C$ at any instant is simply:
+     $$\text{libs}(C) = \text{neighbor\_mask}(C) \ \& \ \text{empty\_mask}$$
+   - `GoGame.copy()` performs a shallow pointer slice of immutable chain tuples, while `get_legal_moves()` tests suicide, multi-group captures, and positional superko in $O(1)$ bitwise operations per empty point without mutating or copying the board.
+3. **Unified Chinese Area Scoring & Ownership Targets**:
+   - `auto_detect_dead_stones()` identifies trapped low-liberty and eye-less enclosed groups and is wired directly into `get_winner()`, ensuring MCTS terminal values match interactive UI scoring (`7.5` Komi).
+   - `get_ownership_target()` produces an exact $(N, N)$ map ($1.0$ = current player point, $0.0$ = opponent point, $0.5$ = neutral dame) at double-pass game end.
 
-Where $N$ is the board dimension ($N = 9$ by default; also supports $13$ or $19$).
+---
+
+## 3. Input Representation: 18 Canonical Feature Planes
+
+OceanGo V2 feeds the network a canonical tensor of shape $[18 \times N \times N]$ from the perspective of the player to move:
 
 | Plane Index | Description | Purpose |
 |:---:|:---|:---|
-| **0 – 7** | Binary matrices of current player stones for time steps $t, t-1, \dots, t-7$ | Captures dynamic tactical history, captures, and recent tempo |
-| **8 – 15** | Binary matrices of opponent stones for time steps $t, t-1, \dots, t-7$ | Provides full reciprocal historical context |
-| **16** | All-ones matrix ($1.0$) if current player is Black (Player 1), or all-zeros ($0.0$) if White (Player 2) | Informs the network of turn color (Komi / First-mover advantage) |
-
-### Canonical Player Perspective
-The input planes are **always formatted from the perspective of the player whose turn it is to move**. Plane $0$ always contains the stones of the current player, and Plane $8$ always contains the opponent's stones. This symmetry allows a single neural network to play both Black and White without duplicate parameters.
+| **0 – 7** | Current player stones for time steps $t, t-1, \dots, t-7$ | Tactical history, recent captures, and ko state |
+| **8 – 15** | Opponent stones for time steps $t, t-1, \dots, t-7$ | Reciprocal historical context |
+| **16** | Constant $1.0$ if Black to move, $0.0$ if White to move | Komi ($7.5$) and turn-color awareness |
+| **17** | **Constant $1.0$ on-board area mask** | Allows zero-padded $3 \times 3$ convolutions to distinguish edges & corners at every depth across $9\times 9$, $13\times 13$, and $19\times 19$ |
 
 ---
 
-## 3. Deep Residual Neural Network (ResNet)
+## 4. Board-Size-Agnostic Global-Pooling ResNet (`PolicyValueNet`)
 
-The network architecture ($f_\theta$) maps the $17 \times N \times N$ state tensor into two heads: a **Policy Head** and a **Value Head**.
+Traditional AlphaGo Zero networks flatten spatial feature maps into fixed `Linear(N*N, ...)` layers, locking weights to a single board size. OceanGo V2 replaces all fixed-dimension layers with **KataGo Global-Pooling (`KataGlobalPool`)**, making **100% of parameters independent of $N$**.
 
-```mermaid
-graph TD
-    In["Input State: [17, N, N]"] --> ConvIn["Initial Conv 3x3 (256 filters) + BatchNorm + ReLU"]
-    ConvIn --> Res1["ResNet Block 1"]
-    Res1 --> Res2["ResNet Block 2"]
-    Res2 --> Dots["... 19 Residual Blocks ..."]
-    Dots --> ResN["ResNet Block 19"]
-    
-    ResN --> PolConv["Policy Conv 1x1 (2 filters) + BatchNorm + ReLU"]
-    PolConv --> PolFC["Linear Head: [2*N*N] -> [N*N + 1] (Logits)"]
-    PolFC --> LogSoftmax["Log-Softmax -> Policy p"]
-    
-    ResN --> ValConv["Value Conv 1x1 (1 filter) + BatchNorm + ReLU"]
-    ValConv --> ValFC1["Linear Dense: [N*N] -> 256 + ReLU"]
-    ValFC1 --> ValFC2["Linear Dense: 256 -> 1"]
-    ValFC2 --> Tanh["Tanh -> Value v in [-1, +1]"]
-```
+### `KataGlobalPool` Layer
+Given a feature tensor $X \in \mathbb{R}^{B \times C \times N \times N}$, `KataGlobalPool` computes channel-wise statistics scaled relative to board size $N$:
+$$\mu_c = \frac{1}{N^2}\sum_{i,j} X_{c,i,j}, \qquad s(N) = \frac{N - 14.0}{10.0}, \qquad m_c = \max_{i,j} X_{c,i,j}$$
+$$\text{KataGlobalPool}(X) = \big[\,\mu,\; s(N)\cdot \mu,\; m\,\big] \in \mathbb{R}^{B \times 3C}$$
+Notice $s(9) = -0.5$, $s(13) = -0.1$, and $s(19) = +0.5$, explicitly informing global value and pass heads how $7.5$ Komi and stone counts scale with board area.
 
-### Initial Convolution
-- **Filter**: 256 channels, kernel size $3 \times 3$, padding $1$, stride $1$.
-- Followed by **Batch Normalization** and **ReLU** activation.
+### Residual Backbone (`default: 15 blocks × 192 channels`)
+- Standard $3\times 3$ `ResBlock`s alternate with a `GlobalPoolResBlock` every 3rd block (`blocks 3, 6, 9, 12, 15`), injecting whole-board territory, liberty, and ladder context back into spatial trunk channels at every stage.
 
-### Residual Tower (19 Blocks)
-Each residual block preserves gradient flow across deep layers using identity shortcut connections:
-$$x_{l+1} = \text{ReLU}\left( x_l + \mathcal{F}(x_l, \mathcal{W}_l) \right)$$
-Each block consists of:
-1. $3 \times 3$ Conv (256 filters, stride 1, padding 1) $\to$ BatchNorm $\to$ ReLU
-2. $3 \times 3$ Conv (256 filters, stride 1, padding 1) $\to$ BatchNorm
-3. Skip connection: add input $x_l$
-4. ReLU activation
-
-### Policy Head
-Predicts move probabilities over all $N \times N$ board intersections plus the **Pass** move ($N^2 + 1$ actions):
-1. $1 \times 1$ Conv (2 filters, stride 1) $\to$ BatchNorm $\to$ ReLU
-2. Flatten layer ($2 \times N \times N$)
-3. Linear layer projecting to $N^2 + 1$ logits.
-4. Softmax over legal moves:
-   $$P(s, a) = \frac{\exp(\text{logit}_a)}{\sum_{b \in \text{legal}(s)} \exp(\text{logit}_b)}$$
-
-### Value Head
-Predicts the expected game outcome from the current player's perspective:
-1. $1 \times 1$ Conv (1 filter, stride 1) $\to$ BatchNorm $\to$ ReLU
-2. Flatten layer ($N \times N$)
-3. Fully connected layer to 256 hidden units $\to$ ReLU
-4. Fully connected layer to 1 scalar output $\to$ $\tanh$ activation
-   $$v \in [-1.0, +1.0]$$
-   - $+1.0$: Certain victory for current player.
-   - $-1.0$: Certain defeat for current player.
-   - $0.0$: Even / tie game.
+### Three Board-Size-Agnostic Output Heads
+1. **Policy Head $\to (B, N^2 + 1)$**:
+   - Spatial branch ($1\times 1\text{ Conv } C \to 32 + \text{BN}$) + global context bias (`KataGlobalPool` $\to \text{Linear}(96 \to 32)$) $\to \text{ReLU} \to 1\times 1\text{ Conv}(32 \to 1)$ producing $(B, N^2)$ board move logits.
+   - Pooled **Pass** branch: $\text{Linear}(96 \to 1)$ concatenated to form $(B, N^2 + 1)$.
+2. **Value Head $\to (B, 1)$**:
+   - $1\times 1\text{ Conv}(C \to 32) + \text{BN} + \text{ReLU} \to \text{KataGlobalPool }(B, 96) \to \text{Linear}(96 \to 256) + \text{ReLU} \to \text{Linear}(256 \to 1)$ outputting raw win-rate logit $u$.
+   - Inference maps $u$ to $[-1, +1]$ via the exact identity:
+     $$v = 2\sigma(u) - 1 = \tanh(0.5\,u) \in [-1, +1]$$
+3. **Auxiliary Ownership Head $\to (B, N, N)$**:
+   - $1\times 1\text{ Conv}(C \to 32) + \text{BN} + \text{ReLU} \to 1\times 1\text{ Conv}(32 \to 1)$ outputting per-intersection ownership logits. Evaluated **only during training** (or live `[O]` UI visualization), adding **zero** MCTS inference overhead.
 
 ---
 
-## 4. Monte Carlo Tree Search (MCTS) with PUCT
+## 5. MCTS Search & Self-Play Optimizations
 
-While the raw neural network policy $\mathbf{p}$ provides quick intuition, MCTS acts as a powerful lookahead search that dramatically sharpens move selection.
+### 1. Parent-Relative First-Play Urgency (FPU) & Dynamic PUCT
+Setting $Q = 0$ for unvisited moves forces MCTS in losing positions ($-Q_{\text{parent}} < 0$) to waste visits scanning every legal intersection once before searching deeper. OceanGo V2 uses **Parent-Relative FPU** and **Dynamic PUCT**:
+$$c_{\text{puct}}(s) = c_{\text{init}} + \ln\!\left(\frac{1 + N(s) + c_{\text{base}}}{c_{\text{base}}}\right)$$
+$$Q_{\text{FPU}}(s) = V(s) - c_{\text{fpu}}\sqrt{\sum_{b:\,N(s,b)>0} P_{\text{raw}}(s, b)}$$
+with $c_{\text{fpu}} = 0.20$ at internal nodes and $c_{\text{fpu}} = 0.0$ at Dirichlet-noised root nodes.
 
-### The 4 Phases of MCTS
+### 2. Pass-Safe Root Dirichlet Noise & Subtree Reuse
+- Root Dirichlet noise ($\epsilon = 0.25$, $\alpha \in \{0.15, 0.06, 0.03\}$) is restricted strictly to **board moves** whenever legal board moves exist, keeping `Pass` at its clean neural prior so noise never triggers premature double-passes.
+- Clean neural priors `raw_P` are stored separately from noised `P`, allowing MCTS subtrees (`root = root.children[move]`) to be reused across moves in both self-play and interactive `--play`.
 
-```mermaid
-sequenceDiagram
-    participant S as Selection (PUCT)
-    participant E as Evaluation (ResNet)
-    participant X as Expansion (Legal Moves)
-    participant B as Backup (-v Inversion)
-    
-    S->>E: Traverse tree to leaf state s_L via argmax(Q + U)
-    E->>X: Evaluate leaf: f_θ(s_L) -> (p, v)
-    X->>B: Create child nodes with prior P(s_L, a) = p_a
-    B->>S: Backpropagate inverted value -v up the search path
-```
+### 3. Decoupled Soft Policy Targets vs. Smooth Temperature Decay
+- Training targets $\boldsymbol{\pi}_{\text{target}}$ always record normalized visit counts $N(s,a)/\sum_b N(s,b)$ (with single-visit low-prior noise pruning), preserving rich multi-candidate supervision throughout the middlegame and endgame.
+- Self-play move selection independently applies smooth temperature decay ($1.0 \to 0.5 \to 0.15 \to \text{greedy}$).
 
-#### Phase 1: Selection (PUCT)
-Starting from root state $s_0$, the search traverses down the tree. At each internal node $s$, it selects the action $a^*$ that maximizes the **Predictor Upper Confidence Bound applied to trees (PUCT)**:
-
-$$a^* = \arg\max_a \left( Q(s, a) + U(s, a) \right)$$
-
-Where:
-- **$Q(s, a)$**: Exploitation term. The mean action-value of all previous visits to action $a$:
-  $$Q(s, a) = \frac{W(s, a)}{N(s, a)}$$
-- **$U(s, a)$**: Exploration term. Encourages visiting moves with high neural network prior probability $P(s, a)$ that have not been explored often:
-  $$U(s, a) = c_{puct} \cdot P(s, a) \cdot \frac{\sqrt{\sum_b N(s, b)}}{1 + N(s, a)}$$
-- $c_{puct}$: Exploration constant (default $1.0$).
-
-##### Exploration Dynamics
-- When an action $a$ has never been visited ($N(s, a) = 0$), $U(s, a)$ is at its maximum and is directly proportional to the neural network's prior $P(s, a)$.
-- As $N(s, a)$ increases, $U(s, a)$ decays toward zero, allowing the empirical value $Q(s, a)$ to dominate selection.
-
-#### Phase 2: Evaluation
-When traversal reaches an unexpanded leaf node $s_L$:
-- If $s_L$ is terminal (game over via consecutive passes or full board), its true value $z \in \{-1, 0, +1\}$ is assigned using the exact Go area scoring rules engine.
-- Otherwise, $s_L$ is evaluated by the neural network:
-  $$( \mathbf{p}, v ) = f_\theta(s_L)$$
-
-#### Phase 3: Expansion
-For all legal moves $a \in \text{legal}(s_L)$, child nodes $s_{L+1} = \text{make\_move}(s_L, a)$ are instantiated, with their prior probabilities initialized to the masked softmax policy:
-$$P(s_L, a) = \mathbf{p}_a, \quad N(s_L, a) = 0, \quad W(s_L, a) = 0, \quad Q(s_L, a) = 0$$
-The node is marked as expanded.
-
-#### Phase 4: Backup (Zero-Sum Inversion)
-The evaluation value $v$ is backpropagated up the search path back to the root.
-
-> [!IMPORTANT]
-> **Two-Player Zero-Sum Value Inversion**: The neural network value $v$ is evaluated from the perspective of the player at leaf $s_L$. The action that led into $s_L$ was taken by $s_L$'s parent (the opponent). Therefore, the value of choosing this move from the parent's perspective is **$-v$**.
->
-> In the backup loop, the value sign alternates at every step:
-> $$\text{For child edge: } W \leftarrow W - v$$
-> $$\text{For parent edge: } W \leftarrow W + v$$
+### 4. KataGo Playout Cap Oscillations & Calibrated Resignation
+- **Playout Cap Randomization**: `25%` of self-play turns run a **full search** (`--sims`, Dirichlet ON, `policy_weight = 1.0`), while `75%` run a **fast search** (`~20%` of `--sims`, min `80`, Dirichlet OFF, `policy_weight = 0.0`), increasing game generation throughput by **~2.5x–3x**.
+- **Calibrated Resignation + Full-Playout Gate**: Games resign when both root and best-child values stay below $-0.90$ for `5` consecutive plies. Resignation is **disabled in `25%` of games** (`playout_full_game = True`) so those games play cleanly to double-pass—supplying exact `ownership` supervision (`ownership_weight = 1.0`), sharpening pass play, and measuring the exact false-resignation rate.
 
 ---
 
-## 5. Parallel Batched MCTS & Virtual Loss
+## 6. Non-Saturating Multi-Task Loss & Controlled Replay Ratio
 
-To maximize GPU hardware utilization (on Apple Silicon MPS or NVIDIA CUDA) without distorting single-tree PUCT search paths, OceanGo separates **intra-tree batching** (`MCTS_BATCH_SIZE = 16`) from **cross-worker GPU server batching** (`GPU_SERVER_BATCH_SIZE = 512`).
+Replacing `tanh + MSE` with `BCEWithLogitsLoss` cancels the $\sigma'(u)$ saturation derivative analytically, eliminating dead value gradients near $\pm 1$:
 
-To prevent multiple concurrent search paths in the same intra-tree batch from selecting the exact same leaf:
-1. **Virtual Loss**: When a path selects a node during the batch collection phase, a virtual loss $\lambda = 1.0$ is immediately added:
-   $$N_{temp} = N + \lambda, \quad W_{temp} = W - \lambda$$
-   This temporarily decreases $Q(s, a)$, making the node look less attractive to concurrent search paths in the same batch and forcing them to explore alternative branches.
-2. **Batch Evaluation**: Once leaves are gathered across workers, the central GPU server coalesces up to $512$ states and evaluates them in a single parallel tensor pass.
-3. **Loss Removal & Backup**: Virtual loss is deducted, and the true evaluated value $v$ is backpropagated.
+$$\mathcal{L}(\theta) = \mathcal{L}_{\text{policy}}(\text{masked CE}) + 1.2\,\mathcal{L}_{\text{value}}(\text{BCEWithLogits}) + 0.5\,\mathcal{L}_{\text{ownership}}(\text{masked BCEWithLogits}) + 10^{-4}\|\theta_{\text{conv/fc}}\|_2^2$$
+
+- **Selective Weight Decay**: $10^{-4}$ L2 regularization is applied strictly to `Conv2d` and `Linear` weights (`ndim >= 2`), excluding BatchNorm scales and biases.
+- **Controlled Replay Ratio**: Gradient updates per iteration scale proportionally to newly generated self-play positions (`--replay-ratio 1.5`) rather than over-training fixed epochs over the entire buffer.
 
 ---
 
-## 6. Self-Play Reinforcement Learning Loop
+## 7. Bit-Packed Replay Buffer, GPU 8x Symmetry & Shared-Memory IPC
 
-```mermaid
-graph TD
-    A["Initialize Model (Random Weights)"] --> B["Self-Play Generation (Multi-Core CPU)"]
-    B --> C["Dirichlet Noise + Temperature Sampling"]
-    C --> D["Symmetric Augmentation (8x Dihedral)"]
-    D --> E["Experience Replay Buffer"]
-    E --> F["Mini-batch Sampling (SGD + Momentum)"]
-    F --> G["Updated Weights f_θ"]
-    G --> H["Save Checkpoint"]
-    H --> B
-```
-
-### 1. Dirichlet Exploration Noise
-To ensure the self-play games explore diverse opening lines and novel tactical variations, Dirichlet noise is injected into the root node's prior probabilities:
-
-$$P'(s_{root}, a) = (1 - \epsilon) P(s_{root}, a) + \epsilon \cdot \eta_a, \quad \boldsymbol{\eta} \sim \text{Dir}(\alpha)$$
-
-- $\epsilon = 0.25$ (25% noise, 75% neural network prior).
-- $\alpha$ scales inversely with board area: $\alpha = 0.15$ for 9x9, $\alpha = 0.06$ for 13x13, and $\alpha = 0.03$ for standard 19x19.
-
-### 2. Temperature Decay ($\tau$)
-After MCTS completes $M$ simulations for a move, visit counts $N(s, a)$ form the search policy:
-
-$$\pi(a | s) = \frac{N(s, a)^{1 / \tau}}{\sum_b N(s, b)^{1 / \tau}}$$
-
-- **Early Game (Opening Exploration)**: $\tau = 1.0$. Moves are sampled probabilistically proportional to visit counts for the first $T_{cutoff}$ moves, scaled to board size:
-  - **9x9**: Moves 1 – 10
-  - **13x13**: Moves 1 – 16
-  - **19x19**: Moves 1 – 30 (DeepMind AlphaGo Zero default)
-- **Mid & Late Game (Moves $> T_{cutoff}$)**: $\tau \to 0$ ($\tau \le 0.05$). The AI plays greedily:
-  $$a = \arg\max_a N(s, a)$$
-  Maximizing tactical precision and competitive execution.
-
-### 3. Symmetrical Data Augmentation ($8\times$)
-The game of Go possesses **8-fold dihedral symmetry ($D_4$)** consisting of 4 rotations ($0^\circ, 90^\circ, 180^\circ, 270^\circ$) and horizontal reflections.
-
-Every self-play tuple $(s_t, \boldsymbol{\pi}_t, z)$ is expanded into 8 symmetric equivalents before being added to the replay buffer, multiplying training throughput by $8\times$ without additional GPU simulation overhead.
-
----
-
-## 7. Loss Function & Neural Network Optimization
-
-The neural network parameters $\theta$ are trained using **Stochastic Gradient Descent (SGD) with Momentum (0.9)** and **L2 Weight Regularization**.
-
-The objective loss function minimizes the difference between predicted and actual game outcomes while aligning the policy head with the improved MCTS search policy:
-
-$$\mathcal{L}(\theta) = \underbrace{(z - v)^2}_{\text{Value Loss (MSE)}} - \underbrace{\boldsymbol{\pi}^T \log \mathbf{p}}_{\text{Policy Loss (Cross-Entropy)}} + \underbrace{c \|\theta\|^2}_{\text{L2 Regularization}}$$
-
-Where:
-- $z \in \{-1, 0, +1\}$ is the actual winner of the self-play game from the perspective of the player at state $s$.
-- $v$ is the neural network's predicted scalar value.
-- $\boldsymbol{\pi}$ is the normalized visit distribution from MCTS.
-- $\mathbf{p}$ is the raw policy vector output by the network's policy head.
-- $c = 10^{-4}$ is the L2 weight decay parameter.
-
----
-
-## 8. Centralized GPU Inference Queue
-
-To overcome the **Python Global Interpreter Lock (GIL)** and maximize CPU-GPU concurrency:
-
-1. **CPU Worker Pool**: Multiple independent processes run self-play MCTS games concurrently.
-2. **Central GPU Server Thread**: CPU workers do not run local GPU inference. Instead, they push batched leaf states to a shared multiprocessing queue (`req_queue`).
-3. A single dedicated GPU thread gathers requests from all workers, packs them into a single continuous tensor, evaluates them on Apple Silicon MPS or NVIDIA CUDA, and scatters the results back to worker response queues (`res_queues`).
-
-This decoupled architecture achieves **100% hardware saturation** on multi-core CPUs while keeping GPU VRAM usage completely stable and free of out-of-memory (OOM) bottlenecks.
+1. **Bit-Packed `uint16[N, N]` Replay Buffer**:
+   - Packs all 16 binary stone history planes into a single `uint16[N, N]` matrix (`722 bytes` instead of `24.5 KB` on `19x19` — **34x RAM reduction**), keeping `500,000` unique `19x19` states (~4M symmetric views) under **~0.95 GB RAM**.
+   - Stratified 8-fold $D_4$ dihedral rotations and reflections (`torch.rot90` / `torch.flip`) and bit-unpacking run **on-the-fly directly on the GPU** per minibatch.
+2. **Zero-Pickle Shared-Memory Worker Slots (`multiprocessing.shared_memory`)**:
+   - CPU self-play workers write `uint8` leaf planes directly into pre-allocated shared-memory slots and pass tiny `(worker_id, count)` descriptors to the central GPU server thread, eliminating Windows/macOS `spawn` pipe-pickling bottlenecks across 16–32+ workers.
+3. **Blackwell / Apple Silicon Acceleration**:
+   - Uses native `torch.bfloat16` Tensor Core autocast without `GradScaler` overhead on modern NVIDIA GPUs (`RTX 5060 Ti`, `RTX 5090`, `RTX 40/30` series) and Apple Silicon `MPS`, paired with `channels_last` memory format and optional `--compile`.

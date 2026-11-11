@@ -1,86 +1,83 @@
-import torch
+import argparse
 import os
 import numpy as np
+import torch
 
-# If you copied the entire PolicyValueNet class from your main code:
-# Just paste it here again or import it from your module.
-
-class PolicyValueNet(torch.nn.Module):
-    def __init__(self, board_size=9):
-        super().__init__()
-        self.board_size = board_size
-
-        self.conv1 = torch.nn.Conv2d(2, 16, kernel_size=3, padding=1)
-        self.conv2 = torch.nn.Conv2d(16, 32, kernel_size=3, padding=1)
-        self.conv3 = torch.nn.Conv2d(32, 32, kernel_size=3, padding=1)
-
-        self.policy_conv = torch.nn.Conv2d(32, 2, kernel_size=1)
-        self.policy_fc = torch.nn.Linear(2 * board_size * board_size,
-                                         board_size * board_size + 1)
-
-        self.value_conv = torch.nn.Conv2d(32, 1, kernel_size=1)
-        self.value_fc1 = torch.nn.Linear(board_size * board_size, 64)
-        self.value_fc2 = torch.nn.Linear(64, 1)
-
-    def forward(self, x):
-        x = torch.relu(self.conv1(x))
-        x = torch.relu(self.conv2(x))
-        x = torch.relu(self.conv3(x))
-
-        # Policy head
-        p = torch.relu(self.policy_conv(x))
-        p = p.view(p.size(0), -1)  # flatten
-        p = self.policy_fc(p)
-
-        # Value head
-        v = torch.relu(self.value_conv(x))
-        v = v.view(v.size(0), -1)
-        v = torch.relu(self.value_fc1(v))
-        v = torch.tanh(self.value_fc2(v))
-
-        return p, v
+from OceanGo import (
+    IN_PLANES,
+    PolicyValueNet,
+    load_checkpoint_auto,
+    resolve_latest_v2_checkpoint,
+)
 
 
 def main():
-    # Change this to your board size if needed
-    BOARD_SIZE = 13
+    parser = argparse.ArgumentParser(description="Inspect OceanGo V2 GlobalPoolResNet checkpoint & parameters")
+    parser.add_argument("--model", type=str, default="", help="Path to V2 .pth checkpoint (default: auto-detect latest)")
+    parser.add_argument("--save-dir", type=str, default="checkpoints", help="Checkpoint directory to search")
+    args = parser.parse_args()
 
-    # Create an instance of the network
-    net = PolicyValueNet(board_size=BOARD_SIZE)
+    model_file = args.model if args.model else resolve_latest_v2_checkpoint(args.save_dir)
+    if not model_file or not os.path.isfile(model_file):
+        print("No V2 checkpoint found yet. Constructing default 15x192 PolicyValueNet for architectural inspection...\n")
+        net = PolicyValueNet(board_size=9)
+        meta = {
+            "version": 2,
+            "arch": "GlobalPoolResNet (untrained)",
+            "blocks": net.num_res_blocks,
+            "channels": net.num_channels,
+            "board_size": 9,
+            "iteration": 0,
+            "elo_est": 1000.0,
+        }
+    else:
+        meta = load_checkpoint_auto(model_file)
+        if meta.get("version") != 2:
+            print(f"Checkpoint '{model_file}' is a legacy V1 fixed-board file (superseded by V2 GlobalPoolResNet).")
+            return
+        net = PolicyValueNet(
+            board_size=meta.get("board_size", 9),
+            num_channels=meta["channels"],
+            num_res_blocks=meta["blocks"],
+        )
+        net.load_state_dict(meta["state_dict"], strict=True)
+        print(f"==> Loaded V2 checkpoint '{model_file}' successfully!")
 
-    # Check if the file exists
-    model_file = "policy_value_net.pth"
-    if not os.path.isfile(model_file):
-        print(f"Model file '{model_file}' not found.")
-        return
-
-    # Load the weights
-    state_dict = torch.load(model_file, map_location=torch.device("cpu"))
-    net.load_state_dict(state_dict)
     net.eval()
+    total_params = sum(p.numel() for p in net.parameters())
 
-    print("==> Loaded policy_value_net.pth successfully!")
-    print("==> Network parameter details:\n")
+    print("========================================")
+    print(f"Architecture : {meta.get('arch', 'GlobalPoolResNet')} (V{meta.get('version', 2)})")
+    print(f"Backbone     : {meta['blocks']} blocks x {meta['channels']} channels")
+    print(f"Trained Size : {meta.get('board_size', 9)}x{meta.get('board_size', 9)}")
+    print(f"Iteration    : {meta.get('iteration', 0)} (Est. Elo: {meta.get('elo_est', 1000.0):.0f})")
+    print(f"Total Params : {total_params:,}")
+    print("========================================\n")
 
-    # Loop over each parameter and print its name, shape, and optionally some values
+    # Verify board-size-agnostic inference across 9x9, 13x13, and 19x19 with the exact same weights
+    print("==> Verifying 100% Board-Size-Agnostic Inference (9x9 -> 13x13 -> 19x19):")
+    with torch.no_grad():
+        for b_sz in (9, 13, 19):
+            dummy = torch.zeros((1, IN_PLANES, b_sz, b_sz), dtype=torch.float32)
+            dummy[:, 17, :, :] = 1.0
+            p_logits, v_logit, own_logits = net(dummy, return_aux=True)
+            v_val = float(torch.tanh(0.5 * v_logit).item())
+            print(
+                f"  - {b_sz:2d}x{b_sz:<2d}: policy={tuple(p_logits.shape)}, "
+                f"value={v_val:+.4f}, ownership={tuple(own_logits.shape)}"
+            )
+    print()
+
+    print("==> Network Parameter Summary:\n")
     for name, param in net.named_parameters():
-        print(f"Parameter: {name}")
-        print(f" - shape: {tuple(param.size())}")
-        
-        # Convert param to numpy to print or inspect values
         data_np = param.detach().cpu().numpy()
-        
-        # Print a small subset of values if it's large
-        if data_np.size <= 20:
-            # If it's small, print the whole array
-            print(" - values:", data_np)
-        else:
-            # If it's large, just print some samples
-            print(" - first 10 values:", data_np.flatten()[:10])
-            print(" - mean:", np.mean(data_np), "std:", np.std(data_np))
-        print()
+        print(
+            f"  {name:<36} shape={str(tuple(param.size())):<20} "
+            f"mean={np.mean(data_np):+.5f}  std={np.std(data_np):.5f}"
+        )
 
-    print("==> Done printing model parameters.")
+    print("\n==> Done inspecting OceanGo V2 model parameters.")
+
 
 if __name__ == "__main__":
     main()
