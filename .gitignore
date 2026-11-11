@@ -77,3 +77,5 @@ $RECYCLE.BIN/
 *.swp
 *.swo
 *~
+
+paper/*
