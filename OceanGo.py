@@ -3755,18 +3755,38 @@ def main():
         net = net.to(memory_format=torch.channels_last)
 
     if args.compile and not IS_TPU:
-        try:
-            compiled_net = torch.compile(net)
-            dummy_x = boards_to_tensor(np.zeros((2, IN_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=np.float32))
-            with torch.no_grad(), torch.amp.autocast(device_type=device.type, dtype=AMP_DTYPE, enabled=AMP_ENABLED):
-                _ = compiled_net(dummy_x)
-            net = compiled_net
-            print("[Compiler] torch.compile graph fusion active.")
-        except Exception as e:
-            print(f"[Compiler] torch.compile unavailable on this setup ({e}); continuing with eager execution.")
+        can_compile = True
+        if device.type == "mps":
+            can_compile = False
+            print("[Compiler] Note: Apple Silicon MPS lacks Triton; using faster eager MPS bfloat16 execution.")
+        elif OS_NAME == "windows" and device.type == "cuda":
+            try:
+                import triton  # noqa: F401
+            except ImportError:
+                can_compile = False
+                print("[Compiler] Note: 'triton' is not installed on Windows (install triton-windows + MSVC to enable); continuing with fast eager CUDA bfloat16.")
+        if can_compile:
+            try:
+                if hasattr(torch, "_dynamo") and hasattr(torch._dynamo, "config"):
+                    torch._dynamo.config.suppress_errors = True
+                    if hasattr(torch._dynamo.config, "cache_size_limit"):
+                        torch._dynamo.config.cache_size_limit = max(64, int(torch._dynamo.config.cache_size_limit))
+                    if hasattr(torch._dynamo.config, "recompile_limit"):
+                        torch._dynamo.config.recompile_limit = max(64, int(torch._dynamo.config.recompile_limit))
+                compiled_net = torch.compile(net)
+                dummy_x1 = boards_to_tensor(np.zeros((2, IN_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=np.float32))
+                dummy_x2 = boards_to_tensor(np.zeros((8, IN_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=np.float32))
+                with torch.no_grad(), torch.amp.autocast(device_type=device.type, dtype=AMP_DTYPE, enabled=AMP_ENABLED):
+                    _ = compiled_net(dummy_x1)
+                    _ = compiled_net(dummy_x2)
+                net = compiled_net
+                print("[Compiler] torch.compile graph fusion active (dynamic batch warmup complete).")
+            except Exception as e:
+                print(f"[Compiler] torch.compile unavailable on this setup ({e}); continuing with eager execution.")
 
     net.eval()
-    mp_ctx = mp.get_context("spawn") if (IS_TPU or OS_NAME in ("windows", "darwin")) else mp.get_context()
+    # Always use 'spawn' so worker pools never fork() inside an active multithreaded CUDA / Triton / Queue process
+    mp_ctx = mp.get_context("spawn")
 
     # Comprehensive End-to-End Dry-Run Verification
     if args.dry_run:
@@ -3892,10 +3912,10 @@ def main():
     warmup_tpu_buckets(net)
 
     total_start_time = time.time()
-    if curriculum_transition or start_iter >= n_iters:
+    if curriculum_transition or stage_iter >= n_iters:
         end_iter = start_iter + n_iters
     else:
-        end_iter = n_iters
+        end_iter = start_iter + (n_iters - stage_iter)
 
     warmup_total = 2 if curriculum_transition else 0
 

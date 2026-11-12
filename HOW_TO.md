@@ -10,8 +10,8 @@ OceanGo V2 is a self-contained, single-machine, **board-size-agnostic AlphaZero/
 
 - **Python Version**: Python 3.9 – 3.14+ supported (including Python 3.14).
 - **Hardware Acceleration**:
-  - **Windows 11 / Linux (NVIDIA GPU)**: Uses CUDA `bfloat16` Tensor Cores + `channels_last` layout. **Important for RTX 5060 Ti / RTX 5090 (Blackwell `sm_120`)**: use PyTorch CUDA 12.8 (`cu128`) wheels (installed automatically by `setup_venv.bat` / `setup_venv.sh`).
-  - **macOS (Apple Silicon M1/M2/M3/M4)**: Uses Metal Performance Shaders (`MPS`) acceleration.
+  - **Windows 11 / Linux (NVIDIA GPU)**: Uses native CUDA `bfloat16` Tensor Cores (`channels_last` on Ampere/Ada/Hopper; `contiguous` `NCHW` automatically on consumer Blackwell `sm_120` for cuDNN stability). **Important for RTX 5060 Ti / RTX 5090 (Blackwell `sm_120`)**: use PyTorch CUDA 12.8 (`cu128`) wheels (installed automatically by `setup_venv.bat` / `setup_venv.sh`).
+  - **macOS (Apple Silicon M1/M2/M3/M4)**: Uses Metal Performance Shaders (`MPS`) `bfloat16` acceleration.
   - **Google Colab**: Supports Cloud TPUs (`v5e-1` XLA `bfloat16`) and NVIDIA GPUs (`T4`, `L4`, `A100`).
 
 ---
@@ -126,7 +126,7 @@ python OceanGo.py --train --board-size 13 --games 500 --sims 800 --iters 45 --lr
 python OceanGo.py --train --board-size 19 --games 300 --sims 1000 --iters 60 --lr 0.005 --replay-ratio 1.8 --eval-interval 5 --eval-games 20
 ```
 
-*(Tip: On Linux or Windows setups with Triton/MSVC compiler support, append `--compile` for an additional ~15–25% GPU throughput boost).*
+*(Tip: Instead of running the three stage commands manually one by one, use `./train_curriculum.sh` on Linux/macOS or `.\train_curriculum.bat` on Windows 11 — see **[Section 6](#6-automated-3-stage-curriculum-scripts-linux-windows-11--macos)** and **[Section 7 (`--compile` Guide)](#7-using---compile-torchcompile-graph-fusion)** below).*
 
 #### Preset 2: Balanced High-Efficiency (`15 blocks × 192 channels`, ~10.8M params)
 Recommended for **Apple Silicon Macs (`MPS`)**, **8–12 GB VRAM GPUs**, or faster turnaround:
@@ -202,7 +202,7 @@ When launching Stage 2 (`--board-size 13`) after Stage 1 (`9x9`), expect to see:
 OceanGo V2 Initializing...
 OS Platform: Windows (AMD64)
 Computing Device: CUDA | NVIDIA GeForce RTX 5060 Ti (16.0 GB VRAM, sm_120)
-Precision & Layout: bfloat16 | channels_last
+Precision & Layout: bfloat16 | contiguous
 System Memory: 32.0 GB RAM | Replay Cap: 500,000 states
 CPU Threads: 16 available | Using 14 self-play workers
 ========================================
@@ -239,10 +239,155 @@ Notice on the first two transition iterations (`Stage Iter: 1` and `Stage Iter: 
 
 ---
 
-## 6. Playing Interactively Against the AI
+## 6. Automated 3-Stage Curriculum Scripts (Linux, Windows 11 & macOS)
+
+Instead of manually waiting for Stage 1 (`9x9`) to finish before starting Stage 2 (`13x13`) and Stage 3 (`19x19`), OceanGo V2 includes automated, resume-aware pipeline scripts for all three operating systems:
+
+- **`train_curriculum.sh`** — for **Linux** and **macOS**
+- **`train_curriculum.bat`** — for **Windows 11** (`CMD` and `PowerShell`)
+
+### A. What the Automated Scripts Handle for You
+1. **Sequential Stage Chaining (`9x9 -> 13x13 -> 19x19`)**: Automatically launches the next stage immediately after the current stage finishes cleanly (`exit 0`), and halts immediately (`set -euo pipefail` / `!ERRORLEVEL!`) if an error or `Ctrl+C` occurs.
+2. **Smart Crash / `Ctrl+C` Resume**: Before each stage, the script inspects the latest healthy V2 checkpoint in `checkpoints/`. If you stop mid-run (e.g., at Iteration `58` on `13x13`) and re-run the script later, it **automatically skips Stage 1 (`9x9`)**, finishes the remaining `27` iterations of Stage 2 (`59 -> 85`) with full replay buffer + SGD momentum intact, and then continues into Stage 3 (`86 -> 145`). *(Plain `&&` one-liners do not skip completed stages if restarted from the top).*
+3. **Auto-Activates `.venv`** and defaults unconditionally to **Flagship (`18×256`, `40/45/60` iters) + `--compile` enabled** across both `./train_curriculum.sh` and `.\train_curriculum.bat` (while `OceanGo.py` automatically handles Triton vs. fast eager `bfloat16` per GPU backend):
+
+| Platform | Script | Default `--preset` | Default `--compile` Flag | Runtime Compiler Behavior | Recommended Sleep / SSH Wrapper |
+|:---|:---|:---|:---|:---|:---|
+| **Linux (NVIDIA CUDA)** | `./train_curriculum.sh` | `flagship` (`18×256`, `40/45/60` iters) | **Enabled** (`--compile`) | Full `Triton` graph fusion | `tmux` or `nohup ... &` |
+| **Windows 11 (NVIDIA CUDA)** | `.\train_curriculum.bat` | `flagship` (`18×256`, `40/45/60` iters) | **Enabled** (`--compile`) | Uses `triton-windows` if installed, else auto-falls back to eager `bfloat16` | Windows *Power & sleep → Never* |
+| **macOS (Apple Silicon `MPS`)** | `./train_curriculum.sh` | `flagship` (`18×256`, `40/45/60` iters) | **Enabled** (`--compile`) | `OceanGo.py` auto-selects faster eager `MPS` `bfloat16` | `caffeinate -dims ./train_curriculum.sh` |
+
+---
+
+### B. Running Unattended on Each OS
+
+*(Tip: If starting a brand-new curriculum after an earlier experiment, move or delete old `.pth` files in `checkpoints/` first—or pass `--save-dir checkpoints_run2`—so it starts cleanly at Iteration 1).*
+
+#### 1. Linux (Local Terminal or Remote SSH Server)
+```bash
+chmod +x train_curriculum.sh
+
+# Option A (Recommended): Run inside tmux so you can detach/reattach anytime
+tmux new -s oceango
+./train_curriculum.sh 2>&1 | tee -a curriculum_console.log
+# Detach: press Ctrl+B, then D
+# Reattach later: tmux attach -t oceango
+
+# Option B: Run in background with nohup (survives SSH disconnect)
+nohup ./train_curriculum.sh > curriculum_console.log 2>&1 &
+tail -f curriculum_console.log
+```
+
+#### 2. Windows 11 (Command Prompt or PowerShell)
+Set **Settings → System → Power & sleep → Put my device to sleep → Never**, then run:
+```bat
+:: Flagship 18x256 curriculum + --compile (default)
+.\train_curriculum.bat
+
+:: Balanced 15x192 curriculum (8-12 GB VRAM GPUs)
+.\train_curriculum.bat --preset balanced
+
+:: Custom checkpoint directory or worker count (any extra flags forward directly to OceanGo.py)
+.\train_curriculum.bat --save-dir checkpoints_v2 --workers 20
+```
+
+#### 3. macOS (Apple Silicon M1/M2/M3/M4)
+Wrap with macOS's built-in `caffeinate -dims` so your Mac never enters idle sleep during multi-hour self-play:
+```bash
+chmod +x train_curriculum.sh
+
+# Flagship 18x256 curriculum (default)
+caffeinate -dims ./train_curriculum.sh 2>&1 | tee -a curriculum_console.log
+
+# Or Balanced 15x192 curriculum for faster turnaround on base M1/M2/M3/M4 Macs:
+caffeinate -dims ./train_curriculum.sh --preset balanced 2>&1 | tee -a curriculum_console.log
+```
+
+#### 4. Manual Command Chaining Without a Script (`&&`)
+If you ever want to chain custom commands directly in a single uninterrupted session:
+- **Linux / macOS (`bash` / `zsh`) or Windows `CMD` / `PowerShell 7+`**: join commands with `&&` so the next stage only starts if the previous stage succeeded (`exit 0`):
+  ```bash
+  python -u OceanGo.py --train --compile --board-size 9 --blocks 18 --channels 256 --games 600 --sims 800 --iters 40 --lr 0.01 --replay-ratio 1.5 --eval-interval 5 --eval-games 20 && \
+  python -u OceanGo.py --train --compile --board-size 13 --games 500 --sims 800 --iters 45 --lr 0.01 --replay-ratio 1.5 --eval-interval 5 --eval-games 20 && \
+  python -u OceanGo.py --train --compile --board-size 19 --games 300 --sims 1000 --iters 60 --lr 0.005 --replay-ratio 1.8 --eval-interval 5 --eval-games 20
+  ```
+  *(Note: Avoid chaining with `;` in bash or Windows PowerShell 5.1, because `;` launches Stage 2 even if Stage 1 failed or was stopped with `Ctrl+C`).*
+
+---
+
+## 7. Using `--compile` (`torch.compile` Graph Fusion)
+
+Passing `--compile` enables PyTorch 2's **TorchInductor** compiler (`torch.compile`) around `PolicyValueNet`.
+
+### A. What `--compile` Optimizes in OceanGo V2
+- **Kernel Fusion**: Fuses `Conv2d + BatchNorm2d + ReLU`, `KataGlobalPool` spatial mean/max/scale reductions, and residual skip additions into fused Triton GPU kernels, cutting VRAM bandwidth overhead and boosting CUDA throughput by **~15–25%** across both MCTS batched inference and 8x-augmented training steps.
+- **Dynamic MCTS Batch Warmup**: Because parallel CPU self-play workers submit variable batch sizes (`B = 1 .. 512`) every millisecond, OceanGo pre-warms `torch.compile` at `B = 2` and `B = 8` on startup and raises `torch._dynamo.config.recompile_limit` to `64` so a single dynamic-batch graph serves all worker batch sizes without recompilation stalls.
+- **100% Portable Checkpoints & Safe Fallback**: OceanGo automatically strips the compiler's `_orig_mod` wrapper via `unwrap_model()` whenever saving `.pth` files and sets `torch._dynamo.config.suppress_errors = True`. A model trained on Linux with `--compile` loads identically on Windows, macOS, or `--play` without `--compile`.
+
+---
+
+### B. Platform-Specific `--compile` Setup & Behavior
+
+#### 1. Linux with NVIDIA GPU (`RTX 30 / 40 / 5060 Ti / 5090`) — **Recommended**
+PyTorch's Linux `cu128` wheels bundle **Triton** out of the box. You only need a standard C/C++ compiler and Python headers installed so Triton can JIT-compile its tiny CUDA launcher stub:
 
 ```bash
-# Play against your strongest trained model (auto-loads latest V2 checkpoint)
+# Ubuntu / Debian
+sudo apt update && sudo apt install -y build-essential python3-dev
+
+# Fedora / RHEL
+sudo dnf install -y gcc gcc-c++ python3-devel
+
+# Arch Linux
+sudo pacman -S --needed base-devel python
+```
+
+**Verify `--compile` in 10 seconds before starting a full run:**
+```bash
+python OceanGo.py --dry-run --board-size 9 --compile
+```
+Look for this confirmation line at startup:
+```text
+[Compiler] torch.compile graph fusion active (dynamic batch warmup complete).
+```
+> **First-Iteration Warmup Note**: Expect a one-time **15–40 second** pause on the very first self-play batch and first training step of each board size (`9x9`, `13x13`, `19x19`) while Triton compiles and caches kernels under `/tmp/torchinductor_<user>`. Every subsequent iteration runs immediately at full compiled speed.
+
+---
+
+#### 2. Windows 11 with NVIDIA GPU — **Automatic Eager Fallback or Optional `triton-windows`**
+Official Windows PyTorch wheels (`cu128`) do **not** include Triton by default.
+- **Out of the box (zero extra setup)**: If you run `python OceanGo.py --train --compile` (or `.\train_curriculum.bat`) without Triton installed, OceanGo detects this at startup:
+  ```text
+  [Compiler] Note: 'triton' is not installed on Windows (install triton-windows + MSVC to enable); continuing with fast eager CUDA bfloat16.
+  ```
+  Training proceeds immediately at full native CUDA `bfloat16` Tensor Core speed without crashing.
+- **Optional — Enable full `torch.compile` on Windows 11**:
+  1. Install **[Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)** and check the **Desktop development with C++** workload (provides `cl.exe`).
+  2. Open **x64 Native Tools Command Prompt for VS 2022**, `cd` into your `OceanGo` folder, activate `.venv`, and install `triton-windows`:
+     ```cmd
+     .venv\Scripts\activate
+     pip install -U triton-windows
+     python OceanGo.py --dry-run --board-size 9 --compile
+     ```
+  3. Once verified (`[Compiler] torch.compile graph fusion active`), run `.\train_curriculum.bat` from that prompt.
+
+---
+
+#### 3. macOS (Apple Silicon `MPS`) — **Automatic Eager `bfloat16` Selection**
+Triton only targets CUDA/ROCm GPUs, not Apple Metal (`MPS`), and PyTorch's experimental Inductor `mps` backend runs ~4× slower than eager execution on dynamic MCTS batch sizes. When `--compile` is passed on macOS (such as the default in `./train_curriculum.sh`), `OceanGo.py` detects `MPS` at startup and automatically selects fast eager `MPS` `bfloat16` execution.
+
+---
+
+### C. When to Use `--compile` vs. Omit `--compile`
+- **Use `--compile`**: Long training runs (`--train`) on **Linux CUDA** (or **Windows CUDA** with `triton-windows` + MSVC), and high-simulation `--play` (`--sims 1600+`) on Linux CUDA.
+- **Omit `--compile` (or pass `--no-compile`)**: Quick `--dry-run` checks, short interactive `--play` sessions where you want instant startup with zero 15s JIT warmup, **macOS (`MPS`)**, and **Cloud TPUs** (`torch_xla` manages its own XLA graph compilation automatically).
+
+---
+
+## 8. Playing Interactively Against the AI
+
+```bash
+# Play against your strongest trained model (auto-loads latest healthy V2 checkpoint)
 python OceanGo.py --play --sims 1200 --play-symmetries 8
 
 # Play against a specific board's Arena-promoted champion checkpoint as White
@@ -259,9 +404,15 @@ python OceanGo.py --play --model checkpoints/policy_value_net_best_19x19.pth --c
 
 ---
 
-## 7. Inspecting Model Metadata & Parameters
+## 9. Inspecting Model Health, Pass Priors & Parameters
 
-To inspect checkpoint metadata (`version`, `blocks`, `channels`, `board_size`, `iteration`, `elo_est`) and verify cross-board (`9x9`, `13x13`, `19x19`) forward shapes:
+Run `policy_print.py` anytime to scan every `.pth` file in `checkpoints/` for finite weight/BatchNorm health (`HEALTHY (finite)` vs `CORRUPTED (NaN/Inf)`), inspect checkpoint metadata (`version`, `blocks`, `channels`, `board_size`, `iteration`, `elo_est`), and check opening Move-0 pass priors (`P(Pass|Move0)`) across `9x9`, `13x13`, and `19x19`:
+
 ```bash
+# Scan all checkpoints in checkpoints/ and inspect the latest healthy V2 model
 python policy_print.py
+
+# Inspect a specific checkpoint file or custom directory
+python policy_print.py --model checkpoints/policy_value_net_best_19x19.pth
+python policy_print.py --save-dir checkpoints_run2
 ```
