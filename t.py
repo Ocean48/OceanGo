@@ -62,7 +62,17 @@ if cuda_available:
     if props.major >= 12:
         try:
             _ = torch.zeros((2, 2), device="cuda", dtype=torch.bfloat16) @ torch.zeros((2, 2), device="cuda", dtype=torch.bfloat16)
-            print("   Blackwell (RTX 50-series) Check : Kernel execution verified!")
+            conv_test = torch.nn.Sequential(
+                torch.nn.Conv2d(18, 64, kernel_size=3, padding=1, bias=False),
+                torch.nn.BatchNorm2d(64),
+                torch.nn.ReLU(),
+            ).cuda()
+            x_test = torch.randn((8, 18, 9, 9), device="cuda", dtype=torch.float32)
+            with torch.amp.autocast("cuda", dtype=torch.bfloat16):
+                y_test = conv_test(x_test)
+            y_test.float().mean().backward()
+            assert torch.isfinite(y_test).all().item(), "Non-finite Conv2d+BN output on Blackwell!"
+            print("   Blackwell (RTX 50-series) Check : MatMul + Conv2d/BN bfloat16 finite verified (contiguous NCHW)!")
         except Exception as e:
             print(f"   WARNING: Blackwell sm_{props.major}{props.minor} kernel test failed ({e}).")
             print("   Please install CUDA 12.8+ PyTorch: pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu128")

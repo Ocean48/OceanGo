@@ -90,14 +90,18 @@ if not IS_MAIN_PROCESS:
 elif torch.cuda.is_available():
     device = torch.device("cuda")
     torch.set_float32_matmul_precision("high")
-    if hasattr(torch.backends, "cudnn"):
-        torch.backends.cudnn.benchmark = True
     props = torch.cuda.get_device_properties(0)
     GPU_VRAM_GB = props.total_memory / (1024 ** 3)
     CUDA_COMPUTE_CAP = (props.major, props.minor)
+    # Consumer Blackwell (sm_120: RTX 5090 / 5080 / 5060 Ti) under cu128 has known cuDNN NHWC
+    # bfloat16 stride/alignment kernel bugs on odd spatial dims (9x9, 13x13, 19x19) and dynamic
+    # MCTS batch sizes (1..512) that can silently emit NaNs; use contiguous NCHW on sm_120+.
+    is_blackwell_or_newer = (props.major >= 12)
+    if hasattr(torch.backends, "cudnn"):
+        torch.backends.cudnn.benchmark = (not is_blackwell_or_newer)
     device_name = f"{torch.cuda.get_device_name(0)} ({GPU_VRAM_GB:.1f} GB VRAM, sm_{props.major}{props.minor})"
     AMP_ENABLED = True
-    USE_CHANNELS_LAST = True
+    USE_CHANNELS_LAST = (not is_blackwell_or_newer)
     if torch.cuda.is_bf16_supported():
         # Native bfloat16 Tensor Cores on Ampere / Ada / Hopper / Blackwell (RTX 5060 Ti, RTX 5090)
         AMP_DTYPE = torch.bfloat16
@@ -688,7 +692,7 @@ class GoGame:
         if self._legal_moves_cache is not None:
             return self._legal_moves_cache
 
-        moves = [(-1, -1)]
+        moves = []
         tbl = self._tbl
         empty_mask = self.empty_mask
         board_hash = self.board_hash
@@ -725,6 +729,9 @@ class GoGame:
             if (has_lib or captured_stones != 0) and (new_hash not in history):
                 moves.append(coord_of[idx])
 
+        # Place Pass (-1, -1) last (matching policy_logits[N*N]) so tie-breaks / zero-visit
+        # fallbacks never default to passing when legal board intersections exist.
+        moves.append((-1, -1))
         self._legal_moves_cache = moves
         return moves
 
@@ -1036,11 +1043,8 @@ class GoGame:
 # ====================================================
 def boards_to_tensor(batch_of_inputs) -> torch.Tensor:
     arr_np = batch_of_inputs if isinstance(batch_of_inputs, np.ndarray) else np.stack(batch_of_inputs, axis=0)
-    t = torch.from_numpy(arr_np)
-    if device.type == "cuda":
-        t = t.pin_memory().to(device=device, dtype=torch.float32, non_blocking=True)
-    else:
-        t = t.to(device=device, dtype=torch.float32)
+    arr_np = np.ascontiguousarray(arr_np)
+    t = torch.from_numpy(arr_np).to(device=device, dtype=torch.float32)
     if USE_CHANNELS_LAST and t.ndim == 4:
         t = t.to(memory_format=torch.channels_last)
     return t
@@ -1055,7 +1059,7 @@ def _get_tpu_bucket_size(n: int) -> int:
 
 def forward_infer_batch(net: nn.Module, batch_of_inputs):
     """
-    Batched neural network inference across CUDA (native bfloat16/float16 + channels_last),
+    Batched neural network inference across CUDA (native bfloat16/float16),
     Apple Silicon MPS, Google Cloud TPU (XLA bfloat16 buckets), or CPU.
     Accepts either float32 or uint8 (B, 18, N, N) arrays/tensors.
     """
@@ -1069,7 +1073,7 @@ def forward_infer_batch(net: nn.Module, batch_of_inputs):
         if bucket_n > n:
             pad_shape = (bucket_n - n,) + arr_np.shape[1:]
             arr_np = np.concatenate([arr_np, np.zeros(pad_shape, dtype=arr_np.dtype)], axis=0)
-        input_tensor = torch.from_numpy(arr_np).to(device=device, dtype=torch.float32)
+        input_tensor = torch.from_numpy(np.ascontiguousarray(arr_np)).to(device=device, dtype=torch.float32)
         with torch.no_grad(), torch.amp.autocast("xla", dtype=torch.bfloat16):
             policy_logits, value_out = net(input_tensor)
         if xm is not None:
@@ -1078,13 +1082,8 @@ def forward_infer_batch(net: nn.Module, batch_of_inputs):
         value_np = value_out.float().squeeze(1).cpu().numpy()[:n]
         return policy_np, value_np
 
-    t_cpu = torch.from_numpy(arr_np)
-    if device.type == "cuda":
-        # Transfer compact uint8 or float32 over PCIe, then cast on GPU
-        input_tensor = t_cpu.to(device=device, non_blocking=True)
-    else:
-        input_tensor = t_cpu.to(device=device)
-
+    # Transfer compact uint8 or float32 synchronously, then cast on GPU
+    input_tensor = torch.from_numpy(np.ascontiguousarray(arr_np)).to(device=device)
     if input_tensor.dtype != torch.float32:
         input_tensor = input_tensor.to(dtype=torch.float32)
     if USE_CHANNELS_LAST and input_tensor.ndim == 4:
@@ -1144,7 +1143,8 @@ def apply_dihedral_symmetry_torch(
 def ensemble_infer_symmetries(net: nn.Module, batch_of_inputs, num_symmetries: int = 8):
     """
     Ensembles `num_symmetries` (1..8) dihedral rotations/reflections in a single batched GPU pass
-    and averages inverse-transformed policy logits and value predictions (used in interactive --play).
+    and averages inverse-transformed post-softmax policy probabilities (returned as log-probs)
+    and value predictions so rotation-invariant Pass is never artificially boosted over spatial moves.
     """
     if num_symmetries <= 1:
         return forward_infer_batch(net, batch_of_inputs)
@@ -1163,23 +1163,27 @@ def ensemble_infer_symmetries(net: nn.Module, batch_of_inputs, num_symmetries: i
 
     p_all, v_all = forward_infer_batch(net, aug_batch)
     p_all_t = torch.from_numpy(p_all).reshape(k_syms, m, n * n + 1)
-    v_mean = v_all.reshape(k_syms, m).mean(axis=0)
+    p_all_t = torch.nan_to_num(p_all_t, nan=0.0, posinf=20.0, neginf=-20.0)
+    probs_all_t = torch.softmax(p_all_t, dim=-1)
+    v_clean = np.nan_to_num(v_all, nan=0.0, posinf=1.0, neginf=-1.0)
+    v_mean = v_clean.reshape(k_syms, m).mean(axis=0)
 
-    p_acc = torch.zeros((m, n * n + 1), dtype=torch.float32)
+    prob_acc = torch.zeros((m, n * n + 1), dtype=torch.float32)
     for idx_s, sid in enumerate(sym_ids):
         rot_k = sid & 3
         do_flip = sid >= 4
-        pb = p_all_t[idx_s, :, : n * n].reshape(m, n, n)
-        pp = p_all_t[idx_s, :, n * n :]
+        pb = probs_all_t[idx_s, :, : n * n].reshape(m, n, n)
+        pp = probs_all_t[idx_s, :, n * n :]
         # Exact inverse of (rot90(k) -> optional flip(-1)): first optional flip(-1), then rot90(-k)
         if do_flip:
             pb = torch.flip(pb, dims=(-1,))
         if rot_k:
             pb = torch.rot90(pb, k=(4 - rot_k) & 3, dims=(-2, -1))
-        p_acc += torch.cat([pb.reshape(m, n * n), pp], dim=1)
+        prob_acc += torch.cat([pb.reshape(m, n * n), pp], dim=1)
 
-    p_mean = (p_acc / float(k_syms)).numpy()
-    return p_mean, v_mean
+    prob_mean = (prob_acc / float(k_syms)).clamp(min=1e-12)
+    log_prob_mean = torch.log(prob_mean).numpy()
+    return log_prob_mean, v_mean
 
 
 def warmup_tpu_buckets(net: nn.Module):
@@ -1365,7 +1369,7 @@ def advance_mcts_root(root: NN_MCTS_Node, move, new_game_state: GoGame) -> NN_MC
 def mcts_select(root: NN_MCTS_Node):
     """
     Selects a leaf node using AlphaZero dynamic c_puct(s) and KataGo Parent-Relative FPU:
-      fpu_val = -node.Q - c_fpu * sqrt(visited_prior_mass)
+      fpu_val = clamp(-node.Q - c_fpu * sqrt(visited_prior_mass), -1.0, +1.0)
     """
     node = root
     search_path = [node]
@@ -1377,16 +1381,19 @@ def mcts_select(root: NN_MCTS_Node):
         parent_n_sqrt = math.sqrt(parent_tot_n)
         c_puct = C_PUCT + math.log((1.0 + parent_tot_n + C_PUCT_BASE) / C_PUCT_BASE)
 
-        # Parent-relative First-Play Urgency (FPU)
-        parent_v_for_cur = -node.Q if node.N > 0 else node.value
-        c_fpu = C_FPU_ROOT if node.is_root_noised else C_FPU_INTERNAL
+        # Parent-relative First-Play Urgency (FPU), using C_FPU_ROOT at all root nodes
+        # and clamping to [-1.0, +1.0] so unvisited board moves never score below -1.0 (certain loss).
+        raw_parent_v = -node.Q if node.N > 0 else node.value
+        parent_v_for_cur = raw_parent_v if math.isfinite(raw_parent_v) else 0.0
+        c_fpu = C_FPU_ROOT if (node.parent is None or node.is_root_noised) else C_FPU_INTERNAL
         vis_mass = min(1.0, max(0.0, node.visited_prior_sum))
-        fpu_val = parent_v_for_cur - c_fpu * math.sqrt(vis_mass)
+        fpu_val = max(-1.0, min(1.0, parent_v_for_cur - c_fpu * math.sqrt(vis_mass)))
 
         cpuct_sqrt = c_puct * parent_n_sqrt
         for ch in node.children.values():
             total_n = ch.N + ch.virtual_loss
-            u_val = cpuct_sqrt * ch.P / (1.0 + total_n)
+            prior_p = ch.P if math.isfinite(ch.P) else 0.0
+            u_val = cpuct_sqrt * prior_p / (1.0 + total_n)
             q_val = (ch.W - ch.virtual_loss) / total_n if total_n > 0.0 else fpu_val
             score = q_val + u_val
             if score > best_score:
@@ -1394,7 +1401,7 @@ def mcts_select(root: NN_MCTS_Node):
                 best_child = ch
 
         if best_child is None:
-            break
+            best_child = next(iter(node.children.values()))
         node = best_child
         search_path.append(node)
 
@@ -1529,13 +1536,19 @@ def nn_batch_evaluate_and_expand(
     board_s = eval_nodes[0].game_state.board_size
     pass_idx = board_s * board_s
     for i, nd in enumerate(eval_nodes):
-        nd.value = float(value_out[i])
+        v_raw = float(value_out[i])
+        nd.value = max(-1.0, min(1.0, v_raw)) if math.isfinite(v_raw) else 0.0
         legal_moves = nd.game_state.get_legal_moves()
 
         move_indices = [(pass_idx if mv == (-1, -1) else mv[0] * board_s + mv[1]) for mv in legal_moves]
         if move_indices:
             selected_logits = policy_logits[i, move_indices]
-            probs = softmax(selected_logits)
+            if np.all(np.isfinite(selected_logits)):
+                probs = softmax(selected_logits)
+                if not np.all(np.isfinite(probs)):
+                    probs = np.full(len(legal_moves), 1.0 / len(legal_moves), dtype=np.float32)
+            else:
+                probs = np.full(len(legal_moves), 1.0 / len(legal_moves), dtype=np.float32)
         else:
             probs = ()
 
@@ -1882,12 +1895,15 @@ def self_play_one_game(
     entropy_cnt = 0
 
     root = NN_MCTS_Node(game.copy())
+    min_pass_moves = max(16, (board_size * board_size) // 4)
 
     while not game.is_game_over() and move_count < max_moves:
         # Ensure at least move 0 or 25% of moves execute full search
         is_full_search = (move_count == 0) or (n_mcts_sims < 20) or (random.random() < FULL_SEARCH_PROB)
         target_sims = n_mcts_sims if is_full_search else fast_sims
-        policy_weight = 1.0 if is_full_search else 0.0
+        # Mask policy loss on post-resignation playout-calibration plies so hopeless losing states
+        # never concentrate PUCT visits onto Pass and inflate policy_pass_fc.
+        policy_weight = 1.0 if (is_full_search and would_have_resigned_winner is None) else 0.0
 
         # On fast-search turns, avoid letting an already huge reused child skip fresh evaluation;
         # on full-search turns, reuse subtree and run enough fresh Dirichlet-noised simulations.
@@ -1909,6 +1925,27 @@ def self_play_one_game(
                 ch.P = ch.raw_P
             sims_to_run = max(1, target_sims - root.N + 1)
 
+        # Prevent premature opening Pass collapse before min_pass_moves when board moves exist
+        suppress_opening_pass = (
+            move_count < min_pass_moves
+            and game.passes_in_a_row == 0
+            and (-1, -1) in root.children
+            and len(root.children) > 1
+        )
+        if suppress_opening_pass:
+            root.children[(-1, -1)].P = 0.0
+            b_sum = sum(ch.P for mv, ch in root.children.items() if mv != (-1, -1))
+            if b_sum > 1e-8:
+                inv_b = 1.0 / b_sum
+                for mv, ch in root.children.items():
+                    if mv != (-1, -1):
+                        ch.P *= inv_b
+            else:
+                uni_b = 1.0 / float(len(root.children) - 1)
+                for mv, ch in root.children.items():
+                    if mv != (-1, -1):
+                        ch.P = uni_b
+
         pi_target_dict = mcts_run(
             root,
             net=net,
@@ -1921,6 +1958,18 @@ def self_play_one_game(
         )
         if not pi_target_dict:
             break
+
+        if suppress_opening_pass and (-1, -1) in pi_target_dict and len(pi_target_dict) > 1:
+            pi_target_dict[(-1, -1)] = 0.0
+            b_prob_sum = sum(p for mv, p in pi_target_dict.items() if mv != (-1, -1))
+            if b_prob_sum > 1e-8:
+                for mv in list(pi_target_dict.keys()):
+                    if mv != (-1, -1):
+                        pi_target_dict[mv] /= b_prob_sum
+            else:
+                uni_p = 1.0 / float(len(pi_target_dict) - 1)
+                for mv in list(pi_target_dict.keys()):
+                    pi_target_dict[mv] = 0.0 if mv == (-1, -1) else uni_p
 
         # Evaluate calibrated resignation condition (root value AND best-child value < -0.90 for 5 consecutive plies)
         cp = game.current_player
@@ -1945,6 +1994,7 @@ def self_play_one_game(
             if not playout_full_game:
                 resigned_winner = opp
                 break
+            policy_weight = 0.0
 
         pi_flat = np.zeros(board_size * board_size + 1, dtype=np.float32)
         pass_idx = board_size * board_size
@@ -2327,13 +2377,12 @@ def _unpack_and_augment_on_device(
     dihedral rotation/reflection directly on GPU, and unpacks into [B, 18, N, N].
     """
     bsz, n, _ = packed_u16_np.shape
-    non_block = (device.type == "cuda")
 
     def _to_dev(arr, dtype):
-        t = torch.from_numpy(arr)
-        if non_block:
-            t = t.pin_memory()
-        return t.to(device=device, dtype=dtype, non_blocking=non_block)
+        t = torch.from_numpy(np.ascontiguousarray(arr)).to(device=device)
+        if t.dtype != dtype:
+            t = t.to(dtype=dtype)
+        return t
 
     pk_i32 = _to_dev(packed_u16_np.astype(np.int32, copy=False), torch.int32)
     cp_t = _to_dev(cplayer_np, torch.int32)
@@ -2428,12 +2477,16 @@ def train_policy_value_net(
 
     shifts_dev = torch.arange(16, device=device, dtype=torch.int32).view(1, 16, 1, 1)
     start_time = time.time()
+    raw_net = unwrap_model(net)
+    last_good_state = get_cpu_state_dict(raw_net)
 
     tot_loss_sum = 0.0
     p_loss_sum = 0.0
     v_loss_sum = 0.0
     o_loss_sum = 0.0
     ent_sum = 0.0
+    valid_steps = 0
+    nan_skips = 0
 
     for step_idx in range(1, total_steps + 1):
         pk_np, cp_np, pi_np, z_np, pw_np, own_np, ow_np = buf.sample_batch_arrays(eff_batch)
@@ -2448,46 +2501,76 @@ def train_policy_value_net(
         if IS_TPU:
             with torch.amp.autocast("xla", dtype=torch.bfloat16):
                 out_p, out_v_logit, out_own_logit = net(inp, return_aux=True)
-                logp = F.log_softmax(out_p.float(), dim=1)
-                ce_per = -torch.sum(tgt_p * logp, dim=1)
-                policy_loss = (ce_per * p_w).sum() / p_w.sum().clamp(min=1.0)
+            logp = F.log_softmax(out_p.float(), dim=1)
+            ce_terms = torch.where(tgt_p > 0.0, tgt_p * logp, torch.zeros_like(logp))
+            ce_per = -torch.sum(ce_terms, dim=1)
+            policy_loss = (ce_per * p_w).sum() / p_w.sum().clamp(min=1.0)
 
-                value_loss = F.binary_cross_entropy_with_logits(out_v_logit.float().squeeze(-1), tgt_v_prob)
+            value_loss = F.binary_cross_entropy_with_logits(out_v_logit.float().squeeze(-1), tgt_v_prob)
 
-                own_bce = F.binary_cross_entropy_with_logits(out_own_logit.float(), tgt_own, reduction="none").mean(dim=(1, 2))
-                ownership_loss = (own_bce * o_w).sum() / o_w.sum().clamp(min=1.0)
+            own_bce = F.binary_cross_entropy_with_logits(out_own_logit.float(), tgt_own, reduction="none").mean(dim=(1, 2))
+            ownership_loss = (own_bce * o_w).sum() / o_w.sum().clamp(min=1.0)
 
-                loss = policy_loss + VALUE_LOSS_WEIGHT * value_loss + OWNERSHIP_LOSS_WEIGHT * ownership_loss
+            loss = policy_loss + VALUE_LOSS_WEIGHT * value_loss + OWNERSHIP_LOSS_WEIGHT * ownership_loss
 
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=2.0)
-            if xm is not None:
-                xm.optimizer_step(optimizer, barrier=True)
+            grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=2.0)
+            if torch.isfinite(loss) and torch.isfinite(grad_norm):
+                if xm is not None:
+                    xm.optimizer_step(optimizer, barrier=True)
+                else:
+                    optimizer.step()
             else:
-                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                raw_net.load_state_dict(last_good_state)
+                nan_skips += 1
+                continue
         else:
+            # Keep loss computations strictly outside AMP autocast in pure float32
             with torch.amp.autocast(device_type=device.type, dtype=AMP_DTYPE, enabled=AMP_ENABLED):
                 out_p, out_v_logit, out_own_logit = net(inp, return_aux=True)
-                logp = F.log_softmax(out_p.float(), dim=1)
-                ce_per = -torch.sum(tgt_p * logp, dim=1)
-                policy_loss = (ce_per * p_w).sum() / p_w.sum().clamp(min=1.0)
 
-                value_loss = F.binary_cross_entropy_with_logits(out_v_logit.float().squeeze(-1), tgt_v_prob)
+            logp = F.log_softmax(out_p.float(), dim=1)
+            ce_terms = torch.where(tgt_p > 0.0, tgt_p * logp, torch.zeros_like(logp))
+            ce_per = -torch.sum(ce_terms, dim=1)
+            policy_loss = (ce_per * p_w).sum() / p_w.sum().clamp(min=1.0)
 
-                own_bce = F.binary_cross_entropy_with_logits(out_own_logit.float(), tgt_own, reduction="none").mean(dim=(1, 2))
-                ownership_loss = (own_bce * o_w).sum() / o_w.sum().clamp(min=1.0)
+            value_loss = F.binary_cross_entropy_with_logits(out_v_logit.float().squeeze(-1), tgt_v_prob)
 
-                loss = policy_loss + VALUE_LOSS_WEIGHT * value_loss + OWNERSHIP_LOSS_WEIGHT * ownership_loss
+            own_bce = F.binary_cross_entropy_with_logits(out_own_logit.float(), tgt_own, reduction="none").mean(dim=(1, 2))
+            ownership_loss = (own_bce * o_w).sum() / o_w.sum().clamp(min=1.0)
+
+            loss = policy_loss + VALUE_LOSS_WEIGHT * value_loss + OWNERSHIP_LOSS_WEIGHT * ownership_loss
+
+            if not torch.isfinite(loss):
+                optimizer.zero_grad(set_to_none=True)
+                raw_net.load_state_dict(last_good_state)
+                nan_skips += 1
+                logging.warning(f"Non-finite loss detected at step {step_idx}; rolled back BatchNorm/weights and skipped update.")
+                continue
 
             if scaler.is_enabled():
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=2.0)
-                scaler.step(optimizer)
+                grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=2.0)
+                if torch.isfinite(grad_norm):
+                    scaler.step(optimizer)
+                else:
+                    optimizer.zero_grad(set_to_none=True)
+                    nan_skips += 1
                 scaler.update()
+                if not torch.isfinite(grad_norm):
+                    raw_net.load_state_dict(last_good_state)
+                    continue
             else:
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=2.0)
+                grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=2.0)
+                if not torch.isfinite(grad_norm):
+                    optimizer.zero_grad(set_to_none=True)
+                    raw_net.load_state_dict(last_good_state)
+                    nan_skips += 1
+                    logging.warning(f"Non-finite grad_norm detected at step {step_idx}; skipped optimizer step.")
+                    continue
                 optimizer.step()
 
         with torch.no_grad():
@@ -2499,23 +2582,35 @@ def train_policy_value_net(
         vl_val = float(value_loss.detach().cpu().item())
         ol_val = float(ownership_loss.detach().cpu().item())
 
+        valid_steps += 1
         tot_loss_sum += l_val
         p_loss_sum += pl_val
         v_loss_sum += vl_val
         o_loss_sum += ol_val
         ent_sum += ent_batch
 
+        if step_idx % 64 == 0:
+            last_good_state = get_cpu_state_dict(raw_net)
+
         if step_idx % 10 == 0 or step_idx == total_steps:
             print_train_progress(step_idx, total_steps, l_val, pl_val, vl_val, ol_val, ent_batch, start_time)
 
+    # Final integrity check across all parameters and BatchNorm running statistics
+    if not all(torch.isfinite(t).all().item() for t in raw_net.state_dict().values()):
+        logging.error("Non-finite weights/BatchNorm stats detected after training loop; restoring last finite snapshot!")
+        print("\n  [Warning] Non-finite tensor detected after training; restored last clean model snapshot.")
+        raw_net.load_state_dict(last_good_state)
+
     net.eval()
+    denom = max(1, valid_steps)
     metrics = {
-        "loss": tot_loss_sum / total_steps,
-        "policy_loss": p_loss_sum / total_steps,
-        "value_loss": v_loss_sum / total_steps,
-        "ownership_loss": o_loss_sum / total_steps,
-        "entropy": ent_sum / total_steps,
-        "steps": total_steps,
+        "loss": tot_loss_sum / denom,
+        "policy_loss": p_loss_sum / denom,
+        "value_loss": v_loss_sum / denom,
+        "ownership_loss": o_loss_sum / denom,
+        "entropy": ent_sum / denom,
+        "steps": valid_steps,
+        "nan_skips": nan_skips,
     }
     logging.info(
         f"Train Metrics ({total_steps} steps): Total={metrics['loss']:.4f} | "
@@ -2739,6 +2834,16 @@ def evaluate_arena(
 # ====================================================
 #   Self-Describing V2 Checkpoints & Curriculum Loader
 # ====================================================
+def is_state_dict_finite(state_dict: dict) -> bool:
+    """Verifies that every parameter and BatchNorm buffer in `state_dict` is strictly finite (no NaN/Inf)."""
+    if not isinstance(state_dict, dict) or not state_dict:
+        return False
+    for v in state_dict.values():
+        if isinstance(v, torch.Tensor) and not torch.isfinite(v).all().item():
+            return False
+    return True
+
+
 def save_v2_checkpoint(
     path: str,
     net: nn.Module,
@@ -2748,6 +2853,11 @@ def save_v2_checkpoint(
     elo_est: float = 1000.0,
 ):
     raw_net = unwrap_model(net)
+    sd = get_cpu_state_dict(raw_net)
+    if not is_state_dict_finite(sd):
+        logging.error(f"Refusing to save corrupted checkpoint '{path}' (state_dict contains NaN/Inf).")
+        print(f"  [ERROR] Skipping save to '{path}': model contains non-finite (NaN/Inf) weights!")
+        return False
     payload = {
         "version": 2,
         "arch": "GlobalPoolResNet",
@@ -2757,9 +2867,10 @@ def save_v2_checkpoint(
         "iteration": int(iteration),
         "stage_iter": int(stage_iter),
         "elo_est": float(elo_est),
-        "state_dict": get_cpu_state_dict(raw_net),
+        "state_dict": sd,
     }
     torch.save(payload, path)
+    return True
 
 
 def load_checkpoint_auto(path: str) -> dict:
@@ -2800,8 +2911,9 @@ def load_checkpoint_auto(path: str) -> dict:
 
 def resolve_latest_v2_checkpoint(save_dir: str) -> str:
     """
-    Resolves the most recent valid V2 checkpoint across `save_dir/policy_value_net_iter_*.pth`,
-    `save_dir/policy_value_net.pth`, and `./policy_value_net.pth`, fixing the V1 stale-file precedence bug.
+    Resolves the most recent valid, finite V2 checkpoint across `save_dir/policy_value_net_iter_*.pth`,
+    `save_dir/policy_value_net_best_*.pth`, `save_dir/policy_value_net.pth`, and `./policy_value_net.pth`,
+    automatically skipping any corrupted (NaN/Inf) files.
     """
     candidates = []
     if os.path.isdir(save_dir):
@@ -2812,6 +2924,10 @@ def resolve_latest_v2_checkpoint(save_dir: str) -> str:
                     fpath = os.path.join(save_dir, fname)
                     if os.path.isfile(fpath):
                         candidates.append((int(num_part), os.path.getmtime(fpath), fpath))
+            elif fname.startswith("policy_value_net_best_") and fname.endswith(".pth"):
+                fpath = os.path.join(save_dir, fname)
+                if os.path.isfile(fpath):
+                    candidates.append((-1, os.path.getmtime(fpath), fpath))
         sd_default = os.path.join(save_dir, "policy_value_net.pth")
         if os.path.isfile(sd_default):
             candidates.append((-1, os.path.getmtime(sd_default), sd_default))
@@ -2820,6 +2936,7 @@ def resolve_latest_v2_checkpoint(save_dir: str) -> str:
         candidates.append((-1, os.path.getmtime("policy_value_net.pth"), "policy_value_net.pth"))
 
     best_tuple = None
+    skipped_nan = []
     for iter_hint, mtime, fpath in candidates:
         try:
             meta = load_checkpoint_auto(fpath)
@@ -2827,10 +2944,19 @@ def resolve_latest_v2_checkpoint(save_dir: str) -> str:
             continue
         if meta.get("version") != 2:
             continue
+        if not is_state_dict_finite(meta.get("state_dict")):
+            skipped_nan.append(fpath)
+            continue
         it_num = max(iter_hint, int(meta.get("iteration", 0)))
         cand_key = (it_num, mtime, fpath)
         if best_tuple is None or cand_key[:2] > best_tuple[:2]:
             best_tuple = cand_key
+
+    if skipped_nan and IS_MAIN_PROCESS:
+        print(
+            f"[Warning] Skipped {len(skipped_nan)} corrupted checkpoint(s) containing NaN/Inf weights "
+            f"(e.g., '{skipped_nan[0]}')."
+        )
 
     return best_tuple[2] if best_tuple is not None else ""
 
@@ -3345,6 +3471,32 @@ def run_interactive_game(net: nn.Module, human_color: str = "black", play_symmet
                 mcts_root.W = -mcts_root.value
                 mcts_root.Q = -mcts_root.value
 
+            stones_on_board = int(np.count_nonzero(game.board != 0))
+            min_opening_stones = max(6, (board_size * board_size) // 6)
+            forbid_premature_pass = (
+                stones_on_board < min_opening_stones
+                and game.passes_in_a_row == 0
+                and (-1, -1) in mcts_root.children
+                and len(mcts_root.children) > 1
+            )
+            if forbid_premature_pass:
+                mcts_root.children[(-1, -1)].P = 0.0
+                b_moves = [mv for mv in mcts_root.children.keys() if mv != (-1, -1)]
+                b_sum = sum(mcts_root.children[mv].P for mv in b_moves)
+                if b_sum > 1e-6:
+                    inv_b = 1.0 / b_sum
+                    for mv in b_moves:
+                        mcts_root.children[mv].P *= inv_b
+                else:
+                    p_raw, _ = ensemble_infer_symmetries(
+                        net, mcts_root.game_state.get_nn_input()[None], num_symmetries=play_symmetries
+                    )
+                    b_idxs = [mv[0] * board_size + mv[1] for mv in b_moves]
+                    b_logits = p_raw[0, b_idxs]
+                    b_probs = softmax(b_logits) if np.all(np.isfinite(b_logits)) else np.full(len(b_moves), 1.0 / len(b_moves))
+                    for mv, pr in zip(b_moves, b_probs):
+                        mcts_root.children[mv].P = float(pr)
+
             pi_dict = mcts_run(
                 mcts_root,
                 net=net,
@@ -3364,8 +3516,14 @@ def run_interactive_game(net: nn.Module, human_color: str = "black", play_symmet
                 else:
                     msg_str = "AI passed! Click [Pass] to finish, or keep playing."
             else:
-                best_move = max(pi_dict.items(), key=lambda elem: elem[1])[0]
+                if forbid_premature_pass and (-1, -1) in pi_dict and len(pi_dict) > 1:
+                    board_candidates = [mv for mv in mcts_root.children.keys() if mv != (-1, -1)]
+                    best_move = max(board_candidates, key=lambda mv: (mcts_root.children[mv].N, mcts_root.children[mv].P))
+                else:
+                    best_move = max(pi_dict.items(), key=lambda elem: elem[1])[0]
                 win_pct = 50.0 * (-mcts_root.Q + 1.0)
+                if not math.isfinite(win_pct):
+                    win_pct = 50.0
                 if best_move == (-1, -1):
                     game.make_move(-1, -1)
                     mcts_root = advance_mcts_root(mcts_root, (-1, -1), game)
@@ -3533,6 +3691,21 @@ def main():
 
     if load_path and os.path.isfile(load_path):
         ckpt = load_checkpoint_auto(load_path)
+        if ckpt.get("version") == 2 and not is_state_dict_finite(ckpt.get("state_dict")):
+            fallback_path = resolve_latest_v2_checkpoint(args.save_dir) if args.model else ""
+            if fallback_path and os.path.abspath(fallback_path) != os.path.abspath(load_path):
+                print(
+                    f"[ERROR] Checkpoint '{load_path}' contains corrupted NaN/Inf weights! "
+                    f"Falling back to latest healthy checkpoint '{fallback_path}'."
+                )
+                load_path = fallback_path
+                ckpt = load_checkpoint_auto(load_path)
+            else:
+                print(
+                    f"[ERROR] Checkpoint '{load_path}' contains corrupted NaN/Inf weights! "
+                    f"Run `python policy_print.py` to inspect '{args.save_dir}' or retrain with the Blackwell stability fix."
+                )
+                ckpt = {"version": 0}
         if ckpt.get("version") == 2:
             net_blocks = ckpt["blocks"]
             net_channels = ckpt["channels"]
