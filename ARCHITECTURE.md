@@ -11,16 +11,32 @@ OceanGo V2 combines **DeepMind's AlphaGo Zero / AlphaZero** self-play framework 
 ```mermaid
 flowchart LR
     subgraph Workers["CPU Self-Play Pool (5800XT / 7900 / Apple Silicon)"]
-        G["Fast GoGame Engine (64-bit Zobrist + Bitmask Chains)"] --> M["MCTS (Parent FPU + Dynamic PUCT + Subtree Reuse + Playout Cap)"]
+        G["Fast GoGame Engine (64-bit Zobrist + Bitmask Chains)"] <-->|"Moves / Legal Masks & Scores"| M["MCTS (Parent FPU + Dynamic PUCT + Subtree Reuse + Playout Cap)"]
     end
+
     M <-->|"Shared Memory uint8/fp32 Slots"| S["GPU Inference Server (bfloat16 + channels_last)"]
-    S --> N["Board-Agnostic GlobalPool ResNet (15x192)"]
-    N --> H1["Spatial + Pooled Pass Policy Head"]
-    N --> H2["GlobalPool Value Head (BCE Logit)"]
-    N --> H3["Aux Ownership Head (NxN)"]
-    M -->|"Bit-Packed uint16[N,N]"| R["Compact Replay Buffer (GPU 8x Symmetry)"]
-    R --> T["Controlled-Ratio Multi-Task Trainer"]
-    T -->|"100% Weight Transfer"| C["Curriculum: 9x9 -> 13x13 -> 19x19"]
+
+    subgraph Model["Board-Agnostic PolicyValueNet (15x192, 10.79M Params)"]
+        N["GlobalPool ResNet Trunk (15x192)"]
+        H1["Spatial + Pooled Pass Policy Head"]
+        H2["GlobalPool Value Head (BCE Logit)"]
+        H3["Aux Ownership Head (NxN, Train Only)"]
+        N --> H1
+        N --> H2
+        N -.->|"return_aux=True"| H3
+    end
+
+    S -->|"Coalesced Leaf Batch"| N
+    H1 & H2 -->|"Policy & Value Logits"| S
+
+    M -->|"Trajectories (uint16[N,N], π, z, O)"| R["Compact Replay Buffer (36x State Compression)"]
+    R -->|"Minibatch + On-GPU 8x D4 Unpack"| T["Controlled-Ratio Multi-Task Trainer"]
+    H1 & H2 & H3 -->|"Train Logits (Policy + Value + Own)"| T
+    T -->|"Forward Batch & SGD Weight Update"| N
+
+    N -->|"100% Weight Transfer"| C["Curriculum: 9x9 -> 13x13 -> 19x19"]
+    C -.->|"Next Board Size N"| G
+    C -.->|"Reset NxN Buffer"| R
 ```
 
 ---
