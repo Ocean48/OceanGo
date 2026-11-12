@@ -1236,6 +1236,10 @@ def softmax(x: np.ndarray) -> np.ndarray:
 #    Progress Bar Helpers
 # ====================================================
 def print_progress_bar(completed, total, start_time, prefix="Self-Play", bar_length=28):
+    is_tty = sys.stdout.isatty()
+    if not is_tty and completed < total:
+        return
+
     pct = completed / total if total > 0 else 1.0
     filled = int(bar_length * pct)
     bar = "█" * filled + "░" * (bar_length - filled)
@@ -1248,29 +1252,31 @@ def print_progress_bar(completed, total, start_time, prefix="Self-Play", bar_len
     elapsed_str = time.strftime("%H:%M:%S", time.gmtime(int(elapsed)))
     eta_str = time.strftime("%H:%M:%S", time.gmtime(eta_sec))
 
-    output = f"\r  {prefix}: [{bar}] {completed}/{total} ({pct*100:5.1f}%) | {speed:.3f} games/s | Elapsed: {elapsed_str} | ETA: {eta_str}"
+    lead = "\r" if is_tty else ""
+    tail = "\n" if (completed >= total or not is_tty) else ""
+    output = f"{lead}  {prefix}: [{bar}] {completed}/{total} ({pct*100:5.1f}%) | {speed:.3f} games/s | Elapsed: {elapsed_str} | ETA: {eta_str}{tail}"
     sys.stdout.write(output)
     sys.stdout.flush()
-    if completed >= total:
-        sys.stdout.write("\n")
-        sys.stdout.flush()
 
 
 def print_train_progress(step, total_steps, loss, p_loss, v_loss, o_loss, entropy, start_time, bar_length=20):
+    is_tty = sys.stdout.isatty()
+    if not is_tty and step < total_steps:
+        return
+
     pct = step / total_steps if total_steps > 0 else 1.0
     filled = int(bar_length * pct)
     bar = "█" * filled + "░" * (bar_length - filled)
     elapsed = max(0.001, time.time() - start_time)
     speed = step / elapsed
+    lead = "\r" if is_tty else ""
+    tail = "\n" if (step >= total_steps or not is_tty) else ""
     output = (
-        f"\r  Train [{bar}] {step}/{total_steps} ({pct*100:4.1f}%) | "
-        f"Loss: {loss:.3f} (P:{p_loss:.3f} V:{v_loss:.3f} O:{o_loss:.3f} H:{entropy:.2f}) | {speed:4.1f} step/s"
+        f"{lead}  Train [{bar}] {step}/{total_steps} ({pct*100:4.1f}%) | "
+        f"Loss: {loss:.3f} (P:{p_loss:.3f} V:{v_loss:.3f} O:{o_loss:.3f} H:{entropy:.2f}) | {speed:4.1f} step/s{tail}"
     )
     sys.stdout.write(output)
     sys.stdout.flush()
-    if step >= total_steps:
-        sys.stdout.write("\n")
-        sys.stdout.flush()
 
 
 # ====================================================
@@ -2612,10 +2618,11 @@ def train_policy_value_net(
         "steps": valid_steps,
         "nan_skips": nan_skips,
     }
+    train_elapsed = time.time() - start_time
     logging.info(
-        f"Train Metrics ({total_steps} steps): Total={metrics['loss']:.4f} | "
-        f"Policy={metrics['policy_loss']:.4f} | Value(BCE)={metrics['value_loss']:.4f} | "
-        f"Own(BCE)={metrics['ownership_loss']:.4f} | PolicyEntropy={metrics['entropy']:.3f}"
+        f"  Train ({total_steps} steps in {train_elapsed:.1f}s): "
+        f"Loss={metrics['loss']:.4f} (P={metrics['policy_loss']:.4f} V={metrics['value_loss']:.4f} "
+        f"O={metrics['ownership_loss']:.4f} H={metrics['entropy']:.2f})"
     )
     return metrics
 
@@ -3609,8 +3616,6 @@ def run_parallel_self_play_batch(net: nn.Module, board_size: int, n_games: int, 
                     completed_games += 1
                     if show_progress:
                         print_progress_bar(completed_games, n_games, start_t, prefix="Self-Play")
-                    if completed_games % 25 == 0 or completed_games == n_games:
-                        logging.info(f"  Self-play progress: {completed_games}/{n_games} games completed.")
                 except queue.Empty:
                     if all(f.done() for f in futures) and progress_queue.empty():
                         break
@@ -3621,6 +3626,7 @@ def run_parallel_self_play_batch(net: nn.Module, board_size: int, n_games: int, 
                 for k in totals:
                     totals[k] += w_stats[k]
                 req_queue.put("DONE")
+            totals["elapsed_sec"] = max(0.001, time.time() - start_t)
 
         gpu_thread.join(timeout=10.0)
     finally:
@@ -3960,10 +3966,12 @@ def main():
             f"False-Resign: {false_res_rate:.1f}% ({sp_stats['false_resign_count']}/{sp_stats['false_resign_checks']}) | "
             f"Search Entropy: {sp_ent:.2f}"
         )
+        sp_elapsed = sp_stats.get("elapsed_sec", 0.001)
+        sp_rate = sp_stats["games"] / max(0.001, sp_elapsed)
         logging.info(
-            f"  Self-Play Telemetry: +{len(new_states)} states (Buffer={len(REPLAY_BUFFER)}), "
-            f"AvgLen={avg_len:.1f}, Resigned={sp_stats['resigned_games']}/{sp_stats['games']}, "
-            f"FalseResign={false_res_rate:.1f}%, SearchEntropy={sp_ent:.3f}"
+            f"  Self-Play ({sp_stats['games']}g in {sp_elapsed:.1f}s, {sp_rate:.2f}g/s): "
+            f"+{len(new_states)} states (Buf={len(REPLAY_BUFFER)}), AvgLen={avg_len:.1f}, "
+            f"Resign={sp_stats['resigned_games']}/{sp_stats['games']} (False={false_res_rate:.1f}%), H={sp_ent:.2f}"
         )
 
         # Controlled Replay Ratio: scale gradient steps to ~1.5x newly generated positions (with sensible floor)
@@ -3975,7 +3983,6 @@ def main():
                 f"  Training on {target_steps * batch_size:,} GPU-augmented samples ({target_steps} steps, "
                 f"ratio={target_steps * batch_size / max(1, len(new_states)):.2f}x new states)..."
             )
-            t_train0 = time.time()
             train_policy_value_net(
                 net,
                 replay_buffer=REPLAY_BUFFER,
@@ -3984,7 +3991,6 @@ def main():
                 optimizer=optimizer,
                 num_steps=target_steps,
             )
-            logging.info(f"  Training finished in {time.time() - t_train0:.2f}s.")
 
         stage_iter += 1
 
