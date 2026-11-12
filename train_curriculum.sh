@@ -75,25 +75,33 @@ else
     S3_GAMES=300; S3_SIMS=1000; S3_ITERS=60
 fi
 
-get_ckpt_state() {
-    "$PYTHON_BIN" - "$SAVE_DIR" <<'PYEOF'
-import os, sys
-from OceanGo import resolve_latest_v2_checkpoint, load_checkpoint_auto, is_state_dict_finite
+refresh_ckpt_state() {
+    local raw_line=""
+    raw_line="$("$PYTHON_BIN" -c '
+import contextlib, os, sys
+with contextlib.redirect_stdout(sys.stderr):
+    from OceanGo import resolve_latest_v2_checkpoint, load_checkpoint_auto, is_state_dict_finite
+    save_dir = sys.argv[1]
+    p = resolve_latest_v2_checkpoint(save_dir)
+    b, it, st = 0, 0, 0
+    if p and os.path.isfile(p):
+        meta = load_checkpoint_auto(p)
+        if meta.get("version") == 2 and is_state_dict_finite(meta.get("state_dict")):
+            b = int(meta.get("board_size", 0))
+            it = int(meta.get("iteration", 0))
+            st = int(meta.get("stage_iter", it))
+print(f"CKPT_STATE {b} {it} {st}")
+' "$SAVE_DIR" | awk '/^CKPT_STATE /{print $2, $3, $4}' | tail -n 1)" || true
 
-save_dir = sys.argv[1]
-p = resolve_latest_v2_checkpoint(save_dir)
-if not p or not os.path.isfile(p):
-    print("0 0 0")
-    sys.exit(0)
-meta = load_checkpoint_auto(p)
-if meta.get("version") != 2 or not is_state_dict_finite(meta.get("state_dict")):
-    print("0 0 0")
-    sys.exit(0)
-b = int(meta.get("board_size", 0))
-it = int(meta.get("iteration", 0))
-st = int(meta.get("stage_iter", it))
-print(f"{b} {it} {st}")
-PYEOF
+    CKPT_BOARD=0
+    CKPT_ITER=0
+    CKPT_STAGE_ITER=0
+    if [ -n "$raw_line" ]; then
+        read -r CKPT_BOARD CKPT_ITER CKPT_STAGE_ITER <<<"$raw_line" || true
+    fi
+    [[ "${CKPT_BOARD:-}" =~ ^[0-9]+$ ]] || CKPT_BOARD=0
+    [[ "${CKPT_ITER:-}" =~ ^[0-9]+$ ]] || CKPT_ITER=0
+    [[ "${CKPT_STAGE_ITER:-}" =~ ^[0-9]+$ ]] || CKPT_STAGE_ITER=0
 }
 
 echo "======================================================================"
@@ -108,7 +116,7 @@ echo "======================================================================"
 # ------------------------------------------------------------------------------
 # Stage 1: 9x9 — Tactical Reading, Captures, Ko & Life-and-Death
 # ------------------------------------------------------------------------------
-read -r CKPT_BOARD CKPT_ITER CKPT_STAGE_ITER <<<"$(get_ckpt_state)"
+refresh_ckpt_state
 if [ "$CKPT_BOARD" -eq 0 ] || { [ "$CKPT_BOARD" -eq 9 ] && [ "$CKPT_STAGE_ITER" -lt "$S1_ITERS" ]; }; then
     echo -e "\n>>> [Stage 1/3] Launching 9x9 Curriculum Stage (Target: $S1_ITERS stage iters)..."
     "$PYTHON_BIN" -u OceanGo.py --train \
@@ -132,7 +140,7 @@ fi
 # ------------------------------------------------------------------------------
 # Stage 2: 13x13 — Joseki, Ladders & Whole-Board Influence
 # ------------------------------------------------------------------------------
-read -r CKPT_BOARD CKPT_ITER CKPT_STAGE_ITER <<<"$(get_ckpt_state)"
+refresh_ckpt_state
 if [ "$CKPT_BOARD" -eq 9 ] || { [ "$CKPT_BOARD" -eq 13 ] && [ "$CKPT_STAGE_ITER" -lt "$S2_ITERS" ]; }; then
     echo -e "\n>>> [Stage 2/3] Launching 13x13 Curriculum Stage (Target: $S2_ITERS stage iters)..."
     "$PYTHON_BIN" -u OceanGo.py --train \
@@ -154,7 +162,7 @@ fi
 # ------------------------------------------------------------------------------
 # Stage 3: 19x19 — Full-Board Fuseki, Fighting & Endgame Yose
 # ------------------------------------------------------------------------------
-read -r CKPT_BOARD CKPT_ITER CKPT_STAGE_ITER <<<"$(get_ckpt_state)"
+refresh_ckpt_state
 if [ "$CKPT_BOARD" -eq 13 ] || { [ "$CKPT_BOARD" -eq 19 ] && [ "$CKPT_STAGE_ITER" -lt "$S3_ITERS" ]; }; then
     echo -e "\n>>> [Stage 3/3] Launching 19x19 Curriculum Stage (Target: $S3_ITERS stage iters)..."
     "$PYTHON_BIN" -u OceanGo.py --train \

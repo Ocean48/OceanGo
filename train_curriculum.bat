@@ -165,9 +165,11 @@ exit /b 0
 set "CKPT_BOARD=0"
 set "CKPT_ITER=0"
 set "CKPT_STAGE_ITER=0"
-for /f "tokens=1,2,3" %%A in ('python -c "import os; from OceanGo import resolve_latest_v2_checkpoint, load_checkpoint_auto, is_state_dict_finite; p=resolve_latest_v2_checkpoint(r'%SAVE_DIR%'); m=load_checkpoint_auto(p) if (p and os.path.isfile(p)) else {}; ok=(m.get('version')==2 and is_state_dict_finite(m.get('state_dict'))); b=int(m.get('board_size',0)) if ok else 0; it=int(m.get('iteration',0)) if ok else 0; st=int(m.get('stage_iter',it)) if ok else 0; print(b,it,st)"') do (
-    set "CKPT_BOARD=%%A"
-    set "CKPT_ITER=%%B"
-    set "CKPT_STAGE_ITER=%%C"
+for /f "tokens=1,2,3,4" %%A in ('python -c "import contextlib,os,sys; f=contextlib.redirect_stdout(sys.stderr); f.__enter__(); from OceanGo import resolve_latest_v2_checkpoint,load_checkpoint_auto,is_state_dict_finite; p=resolve_latest_v2_checkpoint(r'%SAVE_DIR%'); m=load_checkpoint_auto(p) if (p and os.path.isfile(p)) else {}; ok=(m.get('version')==2 and is_state_dict_finite(m.get('state_dict'))); b=int(m.get('board_size',0)) if ok else 0; it=int(m.get('iteration',0)) if ok else 0; st=int(m.get('stage_iter',it)) if ok else 0; f.__exit__(None,None,None); print('CKPT_STATE',b,it,st)"') do (
+    if "%%A"=="CKPT_STATE" (
+        set "CKPT_BOARD=%%B"
+        set "CKPT_ITER=%%C"
+        set "CKPT_STAGE_ITER=%%D"
+    )
 )
 exit /b 0

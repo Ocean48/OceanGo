@@ -2939,7 +2939,7 @@ def resolve_latest_v2_checkpoint(save_dir: str) -> str:
         if os.path.isfile(sd_default):
             candidates.append((-1, os.path.getmtime(sd_default), sd_default))
 
-    if os.path.isfile("policy_value_net.pth"):
+    if os.path.normpath(save_dir) in ("checkpoints", ".", "") and os.path.isfile("policy_value_net.pth"):
         candidates.append((-1, os.path.getmtime("policy_value_net.pth"), "policy_value_net.pth"))
 
     best_tuple = None
@@ -2962,7 +2962,8 @@ def resolve_latest_v2_checkpoint(save_dir: str) -> str:
     if skipped_nan and IS_MAIN_PROCESS:
         print(
             f"[Warning] Skipped {len(skipped_nan)} corrupted checkpoint(s) containing NaN/Inf weights "
-            f"(e.g., '{skipped_nan[0]}')."
+            f"(e.g., '{skipped_nan[0]}').",
+            file=sys.stderr,
         )
 
     return best_tuple[2] if best_tuple is not None else ""
