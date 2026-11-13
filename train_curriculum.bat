@@ -11,6 +11,7 @@ rem   train_curriculum.bat --no-compile        (Force eager execution)
 rem ==============================================================================
 
 cd /d "%~dp0"
+set "ROOT_DIR=%CD%"
 
 if exist ".venv\Scripts\activate.bat" (
     call ".venv\Scripts\activate.bat"
@@ -55,6 +56,13 @@ set "EXTRA_ARGS=!EXTRA_ARGS! %~1"
 shift
 goto parse_args
 :args_done
+
+if defined COMPILE_FLAG (
+    where cl >nul 2>&1
+    if !ERRORLEVEL! neq 0 (
+        call :try_init_msvc
+    )
+)
 
 if /i "%PRESET%"=="balanced" (
     set "S1_BLOCKS=15"
@@ -170,6 +178,25 @@ for /f "tokens=1,2,3,4" %%A in ('python -c "import contextlib,os,sys; f=contextl
         set "CKPT_BOARD=%%B"
         set "CKPT_ITER=%%C"
         set "CKPT_STAGE_ITER=%%D"
+    )
+)
+exit /b 0
+
+:try_init_msvc
+set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+if not exist "%VSWHERE%" exit /b 0
+set "VS_INST_DIR="
+for /f "usebackq delims=" %%I in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+    set "VS_INST_DIR=%%I"
+)
+if not defined VS_INST_DIR exit /b 0
+if exist "!VS_INST_DIR!\VC\Auxiliary\Build\vcvars64.bat" (
+    set "VSCMD_START_DIR=%ROOT_DIR%"
+    echo [Compiler] Auto-activating Visual Studio x64 C++ Build Tools ^(cl.exe^) for TorchInductor...
+    call "!VS_INST_DIR!\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
+    cd /d "%ROOT_DIR%"
+    if exist ".venv\Scripts\activate.bat" (
+        call ".venv\Scripts\activate.bat"
     )
 )
 exit /b 0

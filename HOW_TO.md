@@ -254,7 +254,7 @@ Instead of manually waiting for Stage 1 (`9x9`) to finish before starting Stage 
 | Platform | Script | Default `--preset` | Default `--compile` Flag | Runtime Compiler Behavior | Recommended Sleep / SSH Wrapper |
 |:---|:---|:---|:---|:---|:---|
 | **Linux (NVIDIA CUDA)** | `./train_curriculum.sh` | `flagship` (`18×256`, `40/45/60` iters) | **Enabled** (`--compile`) | Full `Triton` graph fusion | `tmux` or `nohup ... &` |
-| **Windows 11 (NVIDIA CUDA)** | `.\train_curriculum.bat` | `flagship` (`18×256`, `40/45/60` iters) | **Enabled** (`--compile`) | Uses `triton-windows` if installed, else auto-falls back to eager `bfloat16` | Windows *Power & sleep → Never* |
+| **Windows 11 (NVIDIA CUDA)** | `.\train_curriculum.bat` | `flagship` (`18×256`, `40/45/60` iters) | **Enabled** (`--compile`) | Uses `triton-windows` + auto-detected MSVC `cl.exe` if installed, else auto-falls back to eager `bfloat16` | Windows *Power & sleep → Never* |
 | **macOS (Apple Silicon `MPS`)** | `./train_curriculum.sh` | `flagship` (`18×256`, `40/45/60` iters) | **Enabled** (`--compile`) | `OceanGo.py` auto-selects faster eager `MPS` `bfloat16` | `caffeinate -dims ./train_curriculum.sh` |
 
 ---
@@ -348,28 +348,18 @@ python OceanGo.py --dry-run --board-size 9 --compile
 ```
 Look for this confirmation line at startup:
 ```text
-[Compiler] torch.compile graph fusion active (dynamic batch warmup complete).
+[Compiler] torch.compile graph fusion active (dynamic batch + backward warmup verified).
 ```
 > **First-Iteration Warmup Note**: Expect a one-time **15–40 second** pause on the very first self-play batch and first training step of each board size (`9x9`, `13x13`, `19x19`) while Triton compiles and caches kernels under `/tmp/torchinductor_<user>`. Every subsequent iteration runs immediately at full compiled speed.
 
 ---
 
-#### 2. Windows 11 with NVIDIA GPU — **Automatic Eager Fallback or Optional `triton-windows`**
-Official Windows PyTorch wheels (`cu128`) do **not** include Triton by default.
-- **Out of the box (zero extra setup)**: If you run `python OceanGo.py --train --compile` (or `.\train_curriculum.bat`) without Triton installed, OceanGo detects this at startup:
-  ```text
-  [Compiler] Note: 'triton' is not installed on Windows (install triton-windows + MSVC to enable); continuing with fast eager CUDA bfloat16.
-  ```
-  Training proceeds immediately at full native CUDA `bfloat16` Tensor Core speed without crashing.
+#### 2. Windows 11 with NVIDIA GPU — **Automatic Eager Fallback or Optional `triton-windows` + MSVC**
+- **Out of the box (zero extra setup)**: If you run `python OceanGo.py --train --compile` (or `.\train_curriculum.bat`) without `triton-windows` or MSVC `cl.exe` installed, OceanGo detects this at startup and automatically runs at full native eager CUDA `bfloat16` Tensor Core speed without crashing.
 - **Optional — Enable full `torch.compile` on Windows 11**:
   1. Install **[Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)** and check the **Desktop development with C++** workload (provides `cl.exe`).
-  2. Open **x64 Native Tools Command Prompt for VS 2022**, `cd` into your `OceanGo` folder, activate `.venv`, and install `triton-windows`:
-     ```cmd
-     .venv\Scripts\activate
-     pip install -U triton-windows
-     python OceanGo.py --dry-run --board-size 9 --compile
-     ```
-  3. Once verified (`[Compiler] torch.compile graph fusion active`), run `.\train_curriculum.bat` from that prompt.
+  2. Install `triton-windows` in `.venv` (already bundled with PyTorch 2.11+ `cu128`, or install via `pip install -U triton-windows`).
+  3. Run `.\train_curriculum.bat` directly from Command Prompt or PowerShell — it automatically locates and activates Visual Studio's x64 C++ Build Tools (`vcvars64.bat` via `vswhere.exe`) before launching training! *(If running `python OceanGo.py --compile` directly without `train_curriculum.bat`, launch from **x64 Native Tools Command Prompt for VS 2022** so `cl.exe` is in `PATH`).*
 
 ---
 

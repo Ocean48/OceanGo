@@ -6,6 +6,7 @@ import copy
 import time
 import sys
 import os
+import shutil
 import ctypes
 import argparse
 import concurrent.futures
@@ -239,6 +240,14 @@ else:
 
 def init_environment():
     """Initializes logging and displays profiled hardware runtime details."""
+    for stream in (sys.stdout, sys.stderr):
+        enc = getattr(stream, "encoding", None) or ""
+        if "utf" not in enc.lower() and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     log_start = time.strftime("%Y-%m-%d %H:%M:%S")
     log_filename_time = time.strftime("%Y%m%d_%H%M%S")
@@ -249,6 +258,7 @@ def init_environment():
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
+        encoding="utf-8",
     )
 
     amp_str = str(AMP_DTYPE).replace("torch.", "") if AMP_ENABLED else "float32"
@@ -285,7 +295,9 @@ class KataGlobalPool(nn.Module):
         board_n = float(x.size(-1))
         scale = (board_n - 14.0) / 10.0
         m = x.mean(dim=(-2, -1))
-        mx = x.amax(dim=(-2, -1))
+        # Use index-based max(dim=-1).values instead of amax(dim=(-2, -1)) so TorchInductor
+        # bfloat16 backward scatters via argmax indices rather than dividing by (x == mx) count (0/0 -> NaN).
+        mx = x.flatten(2).max(dim=-1).values
         return torch.cat([m, m * scale, mx], dim=1)
 
 
@@ -1235,6 +1247,13 @@ def softmax(x: np.ndarray) -> np.ndarray:
 # ====================================================
 #    Progress Bar Helpers
 # ====================================================
+def _progress_bar_glyphs():
+    enc = getattr(sys.stdout, "encoding", None) or ""
+    if "utf" in enc.lower():
+        return "█", "░"
+    return "#", "-"
+
+
 def print_progress_bar(completed, total, start_time, prefix="Self-Play", bar_length=28):
     is_tty = sys.stdout.isatty()
     if not is_tty and completed < total:
@@ -1242,7 +1261,8 @@ def print_progress_bar(completed, total, start_time, prefix="Self-Play", bar_len
 
     pct = completed / total if total > 0 else 1.0
     filled = int(bar_length * pct)
-    bar = "█" * filled + "░" * (bar_length - filled)
+    fill_ch, empty_ch = _progress_bar_glyphs()
+    bar = fill_ch * filled + empty_ch * (bar_length - filled)
 
     elapsed = max(0.001, time.time() - start_time)
     speed = completed / elapsed
@@ -1266,7 +1286,8 @@ def print_train_progress(step, total_steps, loss, p_loss, v_loss, o_loss, entrop
 
     pct = step / total_steps if total_steps > 0 else 1.0
     filled = int(bar_length * pct)
-    bar = "█" * filled + "░" * (bar_length - filled)
+    fill_ch, empty_ch = _progress_bar_glyphs()
+    bar = fill_ch * filled + empty_ch * (bar_length - filled)
     elapsed = max(0.001, time.time() - start_time)
     speed = step / elapsed
     lead = "\r" if is_tty else ""
@@ -2484,6 +2505,7 @@ def train_policy_value_net(
     shifts_dev = torch.arange(16, device=device, dtype=torch.int32).view(1, 16, 1, 1)
     start_time = time.time()
     raw_net = unwrap_model(net)
+    active_net = net
     last_good_state = get_cpu_state_dict(raw_net)
 
     tot_loss_sum = 0.0
@@ -2506,7 +2528,7 @@ def train_policy_value_net(
 
         if IS_TPU:
             with torch.amp.autocast("xla", dtype=torch.bfloat16):
-                out_p, out_v_logit, out_own_logit = net(inp, return_aux=True)
+                out_p, out_v_logit, out_own_logit = active_net(inp, return_aux=True)
             logp = F.log_softmax(out_p.float(), dim=1)
             ce_terms = torch.where(tgt_p > 0.0, tgt_p * logp, torch.zeros_like(logp))
             ce_per = -torch.sum(ce_terms, dim=1)
@@ -2520,7 +2542,7 @@ def train_policy_value_net(
             loss = policy_loss + VALUE_LOSS_WEIGHT * value_loss + OWNERSHIP_LOSS_WEIGHT * ownership_loss
 
             loss.backward()
-            grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=2.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(raw_net.parameters(), max_norm=2.0)
             if torch.isfinite(loss) and torch.isfinite(grad_norm):
                 if xm is not None:
                     xm.optimizer_step(optimizer, barrier=True)
@@ -2534,7 +2556,7 @@ def train_policy_value_net(
         else:
             # Keep loss computations strictly outside AMP autocast in pure float32
             with torch.amp.autocast(device_type=device.type, dtype=AMP_DTYPE, enabled=AMP_ENABLED):
-                out_p, out_v_logit, out_own_logit = net(inp, return_aux=True)
+                out_p, out_v_logit, out_own_logit = active_net(inp, return_aux=True)
 
             logp = F.log_softmax(out_p.float(), dim=1)
             ce_terms = torch.where(tgt_p > 0.0, tgt_p * logp, torch.zeros_like(logp))
@@ -2553,12 +2575,16 @@ def train_policy_value_net(
                 raw_net.load_state_dict(last_good_state)
                 nan_skips += 1
                 logging.warning(f"Non-finite loss detected at step {step_idx}; rolled back BatchNorm/weights and skipped update.")
+                if hasattr(active_net, "_orig_mod") and nan_skips >= 3 and valid_steps == 0:
+                    active_net = raw_net
+                    active_net.train()
+                    logging.warning("Repeated non-finite loss under torch.compile; falling back to eager execution for training.")
                 continue
 
             if scaler.is_enabled():
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
-                grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=2.0)
+                grad_norm = torch.nn.utils.clip_grad_norm_(raw_net.parameters(), max_norm=2.0)
                 if torch.isfinite(grad_norm):
                     scaler.step(optimizer)
                 else:
@@ -2567,15 +2593,24 @@ def train_policy_value_net(
                 scaler.update()
                 if not torch.isfinite(grad_norm):
                     raw_net.load_state_dict(last_good_state)
+                    if hasattr(active_net, "_orig_mod") and nan_skips >= 3 and valid_steps == 0:
+                        active_net = raw_net
+                        active_net.train()
+                        logging.warning("Repeated non-finite gradients under torch.compile; falling back to eager execution for training.")
                     continue
             else:
                 loss.backward()
-                grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=2.0)
+                grad_norm = torch.nn.utils.clip_grad_norm_(raw_net.parameters(), max_norm=2.0)
                 if not torch.isfinite(grad_norm):
                     optimizer.zero_grad(set_to_none=True)
                     raw_net.load_state_dict(last_good_state)
                     nan_skips += 1
                     logging.warning(f"Non-finite grad_norm detected at step {step_idx}; skipped optimizer step.")
+                    if hasattr(active_net, "_orig_mod") and nan_skips >= 3 and valid_steps == 0:
+                        active_net = raw_net
+                        active_net.train()
+                        logging.warning("Repeated non-finite gradients under torch.compile; falling back to eager execution for training.")
+                        print("\n  [Compiler] Non-finite gradients under torch.compile; switched training step to eager execution.")
                     continue
                 optimizer.step()
 
@@ -2607,6 +2642,7 @@ def train_policy_value_net(
         print("\n  [Warning] Non-finite tensor detected after training; restored last clean model snapshot.")
         raw_net.load_state_dict(last_good_state)
 
+    raw_net.eval()
     net.eval()
     denom = max(1, valid_steps)
     metrics = {
@@ -2619,8 +2655,9 @@ def train_policy_value_net(
         "nan_skips": nan_skips,
     }
     train_elapsed = time.time() - start_time
+    skip_suffix = f", Skipped={nan_skips}" if nan_skips > 0 else ""
     logging.info(
-        f"  Train ({total_steps} steps in {train_elapsed:.1f}s): "
+        f"  Train ({total_steps} steps in {train_elapsed:.1f}s{skip_suffix}): "
         f"Loss={metrics['loss']:.4f} (P={metrics['policy_loss']:.4f} V={metrics['value_loss']:.4f} "
         f"O={metrics['ownership_loss']:.4f} H={metrics['entropy']:.2f})"
     )
@@ -3763,32 +3800,83 @@ def main():
 
     if args.compile and not IS_TPU:
         can_compile = True
-        if device.type == "mps":
+        if device.type == "mps" or OS_NAME == "darwin":
             can_compile = False
-            print("[Compiler] Note: Apple Silicon MPS lacks Triton; using faster eager MPS bfloat16 execution.")
-        elif OS_NAME == "windows" and device.type == "cuda":
+            if device.type == "mps":
+                print("[Compiler] Note: Apple Silicon MPS lacks Triton; using faster eager MPS bfloat16 execution.")
+            else:
+                print("[Compiler] Note: Skipping torch.compile on macOS CPU; using eager execution.")
+        elif device.type == "cuda":
             try:
                 import triton  # noqa: F401
             except ImportError:
                 can_compile = False
-                print("[Compiler] Note: 'triton' is not installed on Windows (install triton-windows + MSVC to enable); continuing with fast eager CUDA bfloat16.")
+                if OS_NAME == "windows":
+                    print("[Compiler] Note: 'triton' is not installed on Windows (install triton-windows + MSVC to enable); continuing with fast eager CUDA bfloat16.")
+                else:
+                    print("[Compiler] Note: 'triton' is not installed; continuing with fast eager CUDA bfloat16.")
+
         if can_compile:
+            if OS_NAME == "windows":
+                cxx_cmd = os.environ.get("CXX", "cl")
+                if shutil.which(cxx_cmd) is None and not os.path.isfile(cxx_cmd):
+                    can_compile = False
+                    print("[Compiler] Note: MSVC 'cl.exe' is not in PATH (use 'x64 Native Tools Command Prompt for VS' or train_curriculum.bat to enable TorchInductor); continuing with fast eager CUDA bfloat16.")
+            else:
+                cxx_env = os.environ.get("CXX", "")
+                cxx_candidates = ([cxx_env] if cxx_env else []) + ["g++", "c++", "clang++"]
+                if not any(shutil.which(c) or os.path.isfile(c) for c in cxx_candidates):
+                    can_compile = False
+                    print("[Compiler] Note: No C++ compiler (g++/clang++) found in PATH for TorchInductor; continuing with fast eager execution.")
+
+        if can_compile:
+            probe_sd = get_cpu_state_dict(net)
+            has_dynamo_cfg = hasattr(torch, "_dynamo") and hasattr(torch._dynamo, "config")
+            prev_suppress = getattr(torch._dynamo.config, "suppress_errors", False) if has_dynamo_cfg else False
             try:
-                if hasattr(torch, "_dynamo") and hasattr(torch._dynamo, "config"):
-                    torch._dynamo.config.suppress_errors = True
+                if has_dynamo_cfg:
+                    # Keep suppress_errors=False during warmup probe so missing headers/toolchains fail cleanly up front
+                    torch._dynamo.config.suppress_errors = False
                     if hasattr(torch._dynamo.config, "cache_size_limit"):
                         torch._dynamo.config.cache_size_limit = max(64, int(torch._dynamo.config.cache_size_limit))
                     if hasattr(torch._dynamo.config, "recompile_limit"):
                         torch._dynamo.config.recompile_limit = max(64, int(torch._dynamo.config.recompile_limit))
                 compiled_net = torch.compile(net)
+                compiled_net.eval()
                 dummy_x1 = boards_to_tensor(np.zeros((2, IN_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=np.float32))
                 dummy_x2 = boards_to_tensor(np.zeros((8, IN_PLANES, BOARD_SIZE, BOARD_SIZE), dtype=np.float32))
                 with torch.no_grad(), torch.amp.autocast(device_type=device.type, dtype=AMP_DTYPE, enabled=AMP_ENABLED):
-                    _ = compiled_net(dummy_x1)
-                    _ = compiled_net(dummy_x2)
+                    p1, v1 = compiled_net(dummy_x1)
+                    p2, v2 = compiled_net(dummy_x2)
+                if not (torch.isfinite(p1).all() and torch.isfinite(v1).all() and torch.isfinite(p2).all() and torch.isfinite(v2).all()):
+                    raise RuntimeError("non-finite tensor in compiled inference warmup")
+
+                if not args.play:
+                    compiled_net.train()
+                    net.zero_grad(set_to_none=True)
+                    with torch.amp.autocast(device_type=device.type, dtype=AMP_DTYPE, enabled=AMP_ENABLED):
+                        tp, tv, to = compiled_net(dummy_x2, return_aux=True)
+                    probe_loss = tp.float().mean() + tv.float().mean() + to.float().mean()
+                    probe_loss.backward()
+                    grads_finite = torch.isfinite(probe_loss).item() and all(
+                        (p.grad is None or torch.isfinite(p.grad).all().item()) for p in net.parameters()
+                    )
+                    net.zero_grad(set_to_none=True)
+                    net.load_state_dict(probe_sd, strict=True)
+                    compiled_net.eval()
+                    if not grads_finite:
+                        raise RuntimeError("non-finite gradient detected in compiled backward probe")
+
+                if has_dynamo_cfg:
+                    torch._dynamo.config.suppress_errors = True
                 net = compiled_net
-                print("[Compiler] torch.compile graph fusion active (dynamic batch warmup complete).")
+                print("[Compiler] torch.compile graph fusion active (dynamic batch + backward warmup verified).")
             except Exception as e:
+                net.zero_grad(set_to_none=True)
+                net.load_state_dict(probe_sd, strict=True)
+                net.eval()
+                if has_dynamo_cfg:
+                    torch._dynamo.config.suppress_errors = prev_suppress
                 print(f"[Compiler] torch.compile unavailable on this setup ({e}); continuing with eager execution.")
 
     net.eval()
@@ -3828,6 +3916,10 @@ def main():
             lr=args.lr,
             num_steps=2,
         )
+        if metrics["steps"] == 0 or metrics["nan_skips"] > 0:
+            raise RuntimeError(
+                f"Dry-run backprop encountered non-finite gradients (valid_steps={metrics['steps']}, nan_skips={metrics['nan_skips']})!"
+            )
         print(
             f"[Dry-Run] Backprop verified: Loss={metrics['loss']:.4f} "
             f"(P={metrics['policy_loss']:.3f}, V={metrics['value_loss']:.3f}, O={metrics['ownership_loss']:.3f})."
