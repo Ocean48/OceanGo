@@ -16,9 +16,9 @@ Suites:
   6. logs     -> Sec VI-C:  Structured parser for curriculum_console.log & logs_*.log
 
 Usage:
-  python benchmark_paper.py --quick          # Fast 1-2 min smoke verification
-  python benchmark_paper.py                  # Full paper-grade benchmark across all suites
-  python benchmark_paper.py --suite transfer # Run a specific suite only
+  python benchmark_paper.py --quick                   # Fast 1-2 min smoke verification
+  python benchmark_paper.py                           # Full paper-grade benchmark across all suites
+  python benchmark_paper.py --suite hw engine ipc     # Run specific suites & merge into JSON
 """
 
 import argparse
@@ -1193,7 +1193,15 @@ def build_markdown_report(results: dict) -> str:
     meta = results["metadata"]
     lines.append(f"# OceanGo V2 IEEE Paper Benchmark Report (`{meta['machine_slug']}`)")
     lines.append(f"- **Generated At**: {meta['timestamp']}")
-    lines.append(f"- **Quick Mode**: `{meta['quick']}`\n")
+    lines.append(f"- **Last Run Quick Mode**: `{meta['quick']}`")
+    suite_modes = meta.get("suite_modes")
+    if isinstance(suite_modes, dict) and suite_modes:
+        mode_summary = ", ".join(
+            f"`{k}`: {'quick' if v.get('quick') else 'full'}"
+            for k, v in suite_modes.items()
+        )
+        lines.append(f"- **Suite Modes**: {mode_summary}")
+    lines.append("")
 
     if "hw" in results:
         hw = results["hw"]
@@ -1304,10 +1312,9 @@ def main():
     parser.add_argument("--log-file", type=str, default="", help="Specific training log file (default: auto-detect)")
     parser.add_argument(
         "--suite",
-        type=str,
-        default="all",
-        choices=["all", "hw", "engine", "ipc", "transfer", "arena", "logs"],
-        help="Benchmark suite to run (default: all)",
+        nargs="+",
+        default=["all"],
+        help="Benchmark suite(s) to run: all, hw, engine, ipc, transfer, arena, logs (space or comma separated; default: all)",
     )
     parser.add_argument("--quick", action="store_true", help="Fast smoke verification mode (1-2 min)")
     parser.add_argument("--blocks", type=int, default=0, help="Override ResNet blocks (default: auto-detect)")
@@ -1315,6 +1322,20 @@ def main():
     parser.add_argument("--workers", type=int, default=0, help=f"CPU worker count (default: auto={og.PARALLEL_THREADS})")
     parser.add_argument("--out-dir", type=str, default="paper", help="Directory for Markdown/JSON exports (default: paper)")
     args = parser.parse_args()
+
+    valid_suites = ("all", "hw", "engine", "ipc", "transfer", "arena", "logs")
+    raw_suites = []
+    for item in args.suite:
+        for part in str(item).split(","):
+            part = part.strip().lower()
+            if part:
+                if part not in valid_suites:
+                    parser.error(f"invalid --suite choice: '{part}' (choose from {', '.join(valid_suites)})")
+                raw_suites.append(part)
+    if not raw_suites or "all" in raw_suites:
+        suites = ["hw", "engine", "ipc", "transfer", "arena", "logs"]
+    else:
+        suites = list(dict.fromkeys(raw_suites))
 
     workers = args.workers if args.workers > 0 else og.PARALLEL_THREADS
     log_files = find_log_files(args.log_file)
@@ -1324,28 +1345,47 @@ def main():
     blocks = args.blocks if args.blocks > 0 else (ckpt_info["detected_blocks"] or log_blocks or og.RESNET_BLOCKS)
     channels = args.channels if args.channels > 0 else (ckpt_info["detected_channels"] or log_channels or og.RESNET_CHANNELS)
 
-    suites = ["hw", "engine", "ipc", "transfer", "arena", "logs"] if args.suite == "all" else [args.suite]
-
     print("=" * 72, flush=True)
     print(f"OceanGo V2 IEEE Paper Benchmark Runner (quick={args.quick})", flush=True)
+    print(f"  Suites    : {', '.join(suites)}", flush=True)
     print(f"  Backbone  : {blocks} blocks x {channels} channels | Workers: {workers}", flush=True)
     print(f"  Checkpoints ({args.save_dir}): trained stages = {sorted(ckpt_info['trained_by_board'].keys())}", flush=True)
     print(f"  Logs Found: {log_files}", flush=True)
     print("=" * 72, flush=True)
 
-    results = {
-        "metadata": {
-            "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
-            "quick": bool(args.quick),
-            "save_dir": args.save_dir,
-            "blocks": blocks,
-            "channels": channels,
-            "workers": workers,
-        }
-    }
-
     hw_prof = benchmark_hardware_profile(blocks=blocks, channels=channels, workers=workers)
-    results["metadata"]["machine_slug"] = hw_prof["machine_slug"]
+    slug = hw_prof["machine_slug"]
+    json_path = os.path.join(args.out_dir, f"benchmark_results_{slug}.json")
+    md_path = os.path.join(args.out_dir, f"benchmark_report_{slug}.md")
+
+    existing_results = {}
+    if os.path.isfile(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as jf:
+                loaded = json.load(jf)
+            if isinstance(loaded, dict):
+                existing_results = loaded
+                print(f"  Merging into existing benchmark JSON: {json_path}", flush=True)
+        except Exception as e:
+            print(f"  [Warning] Could not read existing '{json_path}' ({e}); starting fresh JSON.", flush=True)
+
+    now_iso = datetime.datetime.now().isoformat(timespec="seconds")
+    prev_meta = existing_results.get("metadata", {}) if isinstance(existing_results.get("metadata"), dict) else {}
+    suite_modes = dict(prev_meta.get("suite_modes", {})) if isinstance(prev_meta.get("suite_modes"), dict) else {}
+    for s_name in suites:
+        suite_modes[s_name] = {"quick": bool(args.quick), "timestamp": now_iso}
+
+    results = dict(existing_results)
+    results["metadata"] = {
+        "timestamp": now_iso,
+        "quick": bool(args.quick),
+        "save_dir": args.save_dir,
+        "blocks": blocks,
+        "channels": channels,
+        "workers": workers,
+        "machine_slug": slug,
+        "suite_modes": suite_modes,
+    }
 
     mp_ctx = mp.get_context("spawn")
 
@@ -1378,10 +1418,6 @@ def main():
         print(f"  -> Parsed {len(results['logs']['iterations'])} iteration records across {len(results['logs']['files_parsed'])} log files.", flush=True)
 
     os.makedirs(args.out_dir, exist_ok=True)
-    slug = hw_prof["machine_slug"]
-    json_path = os.path.join(args.out_dir, f"benchmark_results_{slug}.json")
-    md_path = os.path.join(args.out_dir, f"benchmark_report_{slug}.md")
-
     with open(json_path, "w", encoding="utf-8") as jf:
         json.dump(results, jf, indent=2)
 
