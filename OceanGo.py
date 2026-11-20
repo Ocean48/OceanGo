@@ -1377,19 +1377,37 @@ def apply_root_dirichlet_noise(root: NN_MCTS_Node, dirichlet_alpha: float, epsil
     root.is_root_noised = True
 
 
+def _free_mcts_tree(root: NN_MCTS_Node):
+    """Iteratively breaks parent/child reference cycles so discarded MCTS trees free immediately."""
+    if root is None:
+        return
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        node.parent = None
+        node.game_state = None
+        children = node.children
+        if children:
+            stack.extend(children.values())
+            children.clear()
+
+
 def advance_mcts_root(root: NN_MCTS_Node, move, new_game_state: GoGame) -> NN_MCTS_Node:
     """
     Advances the MCTS search tree to `root.children[move]` for subtree reuse,
     detaching the parent reference and restoring clean neural network priors.
     """
     if root is not None and root.children and move in root.children:
-        next_root = root.children[move]
+        next_root = root.children.pop(move)
+        _free_mcts_tree(root)
         next_root.parent = None
         next_root.game_state = new_game_state.copy()
         next_root.is_root_noised = False
         for ch in next_root.children.values():
             ch.P = ch.raw_P
         return next_root
+    if root is not None:
+        _free_mcts_tree(root)
     return NN_MCTS_Node(new_game_state.copy())
 
 
@@ -1935,6 +1953,7 @@ def self_play_one_game(
         # On fast-search turns, avoid letting an already huge reused child skip fresh evaluation;
         # on full-search turns, reuse subtree and run enough fresh Dirichlet-noised simulations.
         if not is_full_search and root.N >= target_sims:
+            _free_mcts_tree(root)
             root = NN_MCTS_Node(game.copy())
 
         if not root.is_expanded:
@@ -2043,6 +2062,9 @@ def self_play_one_game(
 
         # Advance MCTS subtree for next ply (used when continuing into full search or low-visit fast search)
         root = advance_mcts_root(root, selected_move, game)
+
+    _free_mcts_tree(root)
+    root = None
 
     played_to_double_pass = (resigned_winner is None and game.is_game_over())
     if resigned_winner is not None:
